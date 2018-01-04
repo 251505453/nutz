@@ -1,16 +1,15 @@
 package org.nutz.dao.impl.jdbc.oracle;
 
-import java.sql.Clob;
-import java.util.ArrayList;
-import java.util.List;
-
 import org.nutz.dao.DB;
 import org.nutz.dao.Dao;
 import org.nutz.dao.Sqls;
 import org.nutz.dao.entity.Entity;
 import org.nutz.dao.entity.MappingField;
 import org.nutz.dao.entity.PkType;
+import org.nutz.dao.entity.annotation.ColType;
 import org.nutz.dao.impl.jdbc.AbstractJdbcExpert;
+import org.nutz.dao.impl.jdbc.BlobValueAdaptor2;
+import org.nutz.dao.impl.jdbc.ClobValueAdapter2;
 import org.nutz.dao.jdbc.JdbcExpertConfigFile;
 import org.nutz.dao.jdbc.Jdbcs;
 import org.nutz.dao.jdbc.ValueAdaptor;
@@ -18,8 +17,28 @@ import org.nutz.dao.pager.Pager;
 import org.nutz.dao.sql.Pojo;
 import org.nutz.dao.sql.Sql;
 import org.nutz.dao.util.Pojos;
+import org.nutz.lang.Mirror;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class OracleJdbcExpert extends AbstractJdbcExpert {
+
+	//指定oracle表空间的TableMeta' key
+    private static final String META_TABLESPACE = "oracle-tablespace";
+	
+	//oracle 创建表时指定表空间的默认sql
+    private static String CTS = "tablespace %s\n" +
+            "  pctfree 10\n" +
+            "  initrans 1\n" +
+            "  maxtrans 255\n" +
+            "  storage\n" +
+            "  (\n" +
+            "    initial 64K\n" +
+            "    minextents 1\n" +
+            "    maxextents unlimited\n" +
+            "  )";
 
     private static String CSEQ = "CREATE SEQUENCE ${T}_${F}_SEQ  MINVALUE 1"
                                  + " MAXVALUE 999999999999 INCREMENT BY 1 START"
@@ -30,18 +49,24 @@ public class OracleJdbcExpert extends AbstractJdbcExpert {
                                  + " BEFORE INSERT ON ${T}"
                                  + " FOR EACH ROW"
                                  + " BEGIN "
+                                 + " IF :new.${F} IS NULL THEN"
                                  + " SELECT ${T}_${F}_seq.nextval into :new.${F} FROM dual;"
+                                 + " END IF;"
                                  + " END ${T}_${F}_ST;";
+
 
     public OracleJdbcExpert(JdbcExpertConfigFile conf) {
         super(conf);
     }
 
     public ValueAdaptor getAdaptor(MappingField ef) {
-        if (ef.getTypeMirror().isBoolean())
+        Mirror<?> mirror = ef.getTypeMirror();
+        if (mirror.isBoolean())
             return new OracleBooleanAdaptor();
-        if (Clob.class.isAssignableFrom(ef.getTypeClass()))
-            return new OracleClobAdapter(Jdbcs.getFilePool());
+        if (mirror.isOf(Clob.class))
+            return new ClobValueAdapter2(Jdbcs.getFilePool());
+        if (mirror.isOf(Blob.class))
+            return new BlobValueAdaptor2(Jdbcs.getFilePool());
         return super.getAdaptor(ef);
     }
 
@@ -49,7 +74,9 @@ public class OracleJdbcExpert extends AbstractJdbcExpert {
         StringBuilder sb = new StringBuilder("CREATE TABLE " + en.getTableName() + "(");
         // 创建字段
         for (MappingField mf : en.getMappingFields()) {
-            sb.append('\n').append(mf.getColumnName());
+            if (mf.isReadonly())
+                continue;
+            sb.append('\n').append(mf.getColumnNameInSql());
             sb.append(' ').append(evalFieldType(mf));
             // 非主键的 @Name，应该加入唯一性约束
             if (mf.isName() && en.getPkType() != PkType.NAME) {
@@ -61,16 +88,21 @@ public class OracleJdbcExpert extends AbstractJdbcExpert {
                     sb.append(" primary key ");
                 if (mf.isNotNull())
                     sb.append(" NOT NULL");
-                if (mf.hasDefaultValue())
-                    sb.append(" DEFAULT '").append(getDefaultValue(mf)).append('\'');
-                if (mf.isUnsigned()) // 有点暴力
-                    sb.append(" Check ( ").append(mf.getColumnName()).append(" >= 0)");
+                if (mf.hasDefaultValue() && mf.getColumnType() != ColType.BOOLEAN)
+                    addDefaultValue(sb, mf);
+                if (mf.isUnsigned() && mf.getColumnType() != ColType.BOOLEAN) // 有点暴力
+                    sb.append(" Check ( ").append(mf.getColumnNameInSql()).append(" >= 0)");
             }
             sb.append(',');
         }
 
         // 结束表字段设置
         sb.setCharAt(sb.length() - 1, ')');
+
+		//指定表空间
+        if(en.hasMeta(META_TABLESPACE)){
+            sb.append(String.format(CTS, en.getMeta(META_TABLESPACE)));
+        }
 
         List<Sql> sqls = new ArrayList<Sql>();
         sqls.add(Sqls.create(sb.toString()));
@@ -83,9 +115,9 @@ public class OracleJdbcExpert extends AbstractJdbcExpert {
                 pkNames.append(pk.getColumnName()).append(',');
             }
             pkNames.setLength(pkNames.length() - 1);
-            
+
             String pkNames2 = makePksName(en);
-            
+
             String sql = String.format("alter table %s add constraint primary_key_%s primary key (%s)",
                                        en.getTableName(),
                                        pkNames2,
@@ -155,13 +187,14 @@ public class OracleJdbcExpert extends AbstractJdbcExpert {
         return DB.ORACLE.name();
     }
 
-    @Override
-    protected String evalFieldType(MappingField mf) {
+    public String evalFieldType(MappingField mf) {
         if (mf.getCustomDbType() != null)
             return mf.getCustomDbType();
         switch (mf.getColumnType()) {
         case BOOLEAN:
-            return "char(1) check (" + mf.getColumnName() + " in(0,1))";
+            if (mf.hasDefaultValue())
+                return "char(1) DEFAULT '"+getDefaultValue(mf)+"' check (" + mf.getColumnNameInSql() + " in(0,1))";
+            return "char(1) check (" + mf.getColumnNameInSql() + " in(0,1))";
         case TEXT:
             return "CLOB";
         case VARCHAR:
@@ -219,5 +252,32 @@ public class OracleJdbcExpert extends AbstractJdbcExpert {
 
     public boolean isSupportAutoIncrement() {
         return false;
+    }
+    
+    public boolean addColumnNeedColumn() {
+        return false;
+    }
+    
+    public boolean supportTimestampDefault() {
+        return false;
+    }
+    
+    public String wrapKeywork(String columnName, boolean force) {
+        if (force || keywords.contains(columnName.toUpperCase()))
+            return "\"" + columnName + "\"";
+        return null;
+    }
+    
+    // https://docs.oracle.com/cd/B12037_01/server.101/b10755/statviews_1061.htm
+    public List<String> getIndexNames(Entity<?> en, Connection conn) throws SQLException {
+        List<String> names = new ArrayList<String>();
+        String showIndexs = "SELECT * FROM user_indexes WHERE table_name='" + en.getTableName()+"'";
+        PreparedStatement ppstat = conn.prepareStatement(showIndexs);
+        ResultSet rest = ppstat.executeQuery();
+        while (rest.next()) {
+            String index = rest.getString(2);
+            names.add(index);
+        }
+        return names;
     }
 }

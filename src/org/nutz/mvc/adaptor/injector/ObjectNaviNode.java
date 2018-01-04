@@ -1,13 +1,14 @@
 package org.nutz.mvc.adaptor.injector;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 对象路径节点转换.<br/>
- * 将URL中的字符串参数名转换成对结构, 然后通过 {@link Objs}转换成实体对象<br/>
+ * 将URL中的字符串参数名转换成对结构, 然后通过 {@link org.nutz.mapl.Mapl}转换成实体对象<br/>
  * URL规则:
  * <ul>
  *  <li>对象与属性之间使用"."做为连接符
@@ -49,11 +50,40 @@ public class ObjectNaviNode {
      * 
      */
     public void put(String path, String[] value) {
-        path = path.replace("[", ":");
-        path = path.replace("]", "");
-        path = path.replace("(", ".");
-        path = path.replace(")", "");
-        
+        StringBuilder sb = new StringBuilder();
+        char[] chars = path.toCharArray();
+        OUT: for (int i = 0; i < chars.length; i++) {
+            char c = chars[i];
+            switch (c) {
+            case '[':
+            case '(':
+                i++;
+                StringBuilder sb2 = new StringBuilder();
+                boolean isNumber = true;
+                for (; i < chars.length; i++) {
+                    char c2 = chars[i];
+                    switch (c2) {
+                    case ']':
+                    case ')':
+                        if ((c == '[' && c2 == ']') || (c == '(' && c2 == ')')) {
+                            if (isNumber && !(c == '(')) {
+                                sb.append(':').append(sb2);
+                            } else {
+                                sb.append('.').append(sb2);
+                            }
+                            continue OUT;
+                        }
+                    }
+                    isNumber = isNumber && Character.isDigit(c2);
+                    sb2.append(c2);
+                }
+                break;
+            default:
+                sb.append(c);
+                break;
+            }
+        }
+        path = sb.toString();
         putPath(path, value);
     }
     
@@ -112,7 +142,7 @@ public class ObjectNaviNode {
      * 取得节点名
      * 
      */
-    private String fetchNode(String path) {
+    private static String fetchNode(String path) {
         if (path.indexOf(separator) <= 0) {
             return path;
         }
@@ -140,9 +170,25 @@ public class ObjectNaviNode {
             return value == null ? null : value.length == 1 ? value[0] : value;
         }
         if(type == TYPE_LIST){
+            // fix issue #1109, 列表的key需要重排
             List list = new ArrayList();
-            for(String o : child.keySet()){
-                list.add(child.get(o).get());
+            List<Integer> keys = new ArrayList<Integer>();
+            List<String> keys2 = new ArrayList<String>();
+            
+            for (String key : child.keySet()) {
+                try {
+                    keys.add(Integer.parseInt(key));
+                }
+                catch (NumberFormatException e) {
+                    keys2.add(key);
+                }
+            }
+            Collections.sort(keys);
+            for(Integer index : keys){
+                list.add(child.get(index.toString()).get());
+            }
+            for(String key2 : keys2){
+                list.add(child.get(key2).get());
             }
             return list;
         }
@@ -157,7 +203,7 @@ public class ObjectNaviNode {
      * 是否是list节点
      * @param key
      */
-    private boolean isList(String key){
+    private static boolean isList(String key){
         return key.indexOf(LIST_SEPARATOR) > 0;
     }
 

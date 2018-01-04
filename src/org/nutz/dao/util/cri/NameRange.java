@@ -6,6 +6,8 @@ import org.nutz.dao.jdbc.ValueAdaptor;
 
 public class NameRange extends AbstractSqlExpression {
 
+    private static final long serialVersionUID = 1L;
+
     private String[] names;
 
     NameRange(String name, String... names) {
@@ -23,8 +25,7 @@ public class NameRange extends AbstractSqlExpression {
             for (int i = 0; i < names.length; i++)
                 sb.append("?,");
             sb.setCharAt(sb.length() - 1, ')');
-        } else
-            ;//OK,无需添加.
+        } //OK,无需添加.
     }
 
     public int joinAdaptor(Entity<?> en,ValueAdaptor[] adaptors, int off) {

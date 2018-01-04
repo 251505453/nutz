@@ -10,8 +10,10 @@ import java.util.Map;
 import org.junit.Test;
 import org.nutz.dao.Cnd;
 import org.nutz.dao.Condition;
+import org.nutz.dao.FieldMatcher;
 import org.nutz.dao.entity.Entity;
 import org.nutz.dao.test.DaoCase;
+import org.nutz.dao.test.meta.Pet;
 import org.nutz.dao.util.cri.SqlExpression;
 import org.nutz.lang.Lang;
 
@@ -162,5 +164,43 @@ public class CndTest extends DaoCase {
     public void test_other_op() {
         assertEquals(" WHERE ok IS true", Cnd.where("ok", "is", true)
                                              .toString());
+    }
+    
+    @Test
+    public void test_from_obj() {
+        Pet pet = new Pet();
+        pet.setName("wendal");
+        System.out.println(Cnd.from(dao, pet));
+        assertEquals(" WHERE (name='wendal')", Cnd.from(dao, pet).toString());
+        
+        pet.setAge(10);
+        System.out.println(Cnd.from(dao, pet));
+        assertEquals(" WHERE (name='wendal' AND age=10)", Cnd.from(dao, pet).toString());
+        
+        pet.setAge(0);
+        assertEquals(" WHERE (name='wendal' AND age=0)", Cnd.from(dao, pet, FieldMatcher.make("age|name", null, true).setIgnoreZero(false)).toString());
+    }
+    
+    @Test
+    public void test_not_sql_group() {
+        SqlExpression e2 = Cnd.exps("f2", "=", 1);
+        SqlExpression e3 = Cnd.exps("f3", "=", 1);
+        Condition c = Cnd.where(e2).andNot(e3);
+        assertEquals(" WHERE (f2=1) AND NOT (f3=1)", c.toString());
+    }
+    
+    /**
+     * 序列化测试
+     */
+    @Test
+    public void test_obj_read_write() {
+        SqlExpression e2 = Cnd.exps("f2", "=", 1);
+        SqlExpression e3 = Cnd.exps("f3", "=", 1);
+        Condition c = Cnd.where(e2).andNot(e3);
+        
+        byte[] buf = Lang.toBytes(c);
+        c = Lang.fromBytes(buf, Cnd.class);
+        
+        assertEquals(" WHERE (f2=1) AND NOT (f3=1)", c.toString());
     }
 }

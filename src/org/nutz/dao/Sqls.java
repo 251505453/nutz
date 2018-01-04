@@ -225,7 +225,12 @@ public abstract class Sqls {
          * @return 从 ResultSet获取一个对象的回调对象
          */
         public SqlCallback entity() {
-            return new FetchEntityCallback();
+            return entity(null);
+        }
+        
+
+        public SqlCallback entity(String prefix) {
+            return new FetchEntityCallback(prefix);
         }
 
         /**
@@ -309,7 +314,11 @@ public abstract class Sqls {
          * @return 从 ResultSet获取一组对象的回调对象
          */
         public SqlCallback entities() {
-            return new QueryEntityCallback();
+            return entities(null);
+        }
+        
+        public SqlCallback entities(String prefix) {
+            return new QueryEntityCallback(prefix);
         }
 
         /**
@@ -327,6 +336,16 @@ public abstract class Sqls {
             return new QueryBooleanCallback();
         }
         
+        /**
+         * 与record()类似,但区分大小写
+         */
+        public SqlCallback map() {
+            return FetchMapCallback.me;
+        }
+        /**
+         * 与records()类似,但区分大小写
+         * @return List<Map>回调
+         */
         public SqlCallback maps() {
         	return QueryMapCallback.me;
         }

@@ -21,6 +21,11 @@ public abstract class Trans {
     private static final Log log = Logs.get();
 
     private static Class<? extends Transaction> implClass;
+    
+    /**
+     * 这个类提供的均为静态方法.
+     */
+    Trans() {}
 
     static ThreadLocal<Transaction> trans = new ThreadLocal<Transaction>();
     static ThreadLocal<Integer> count = new ThreadLocal<Integer>();
@@ -50,7 +55,7 @@ public abstract class Trans {
     static void _begain(int level) throws Exception {
         Transaction tn = trans.get();
         if (null == tn) {
-            tn = null == implClass ? new NutTransaction() : Mirror.me(implClass).born();
+            tn = New();
             tn.setLevel(level);
             trans.set(tn);
             count.set(0);
@@ -107,6 +112,10 @@ public abstract class Trans {
         }
     }
 
+    /**
+     * 是否在事务中
+     * @return 真,如果在不事务中
+     */
     public static boolean isTransactionNone() {
         Transaction t = trans.get();
         return null == t || t.getLevel() == Connection.TRANSACTION_NONE;
@@ -256,6 +265,10 @@ public abstract class Trans {
             return get().getConnection(ds);
     }
 
+    /**
+     * 自动判断是否关闭当前连接
+     * @param conn 数据库连接
+     */
     public static void closeConnectionAuto(Connection conn) {
         if (get() == null && null != conn) {
             try {
@@ -265,5 +278,41 @@ public abstract class Trans {
                 throw Lang.wrapThrow(e);
             }
         }
+    }
+    
+    /**
+     * 强制清理事务上下文
+     * @param rollbackOrCommit 检测到未闭合的事务时回滚还是提交，true为回滚，false为提交。
+     */
+    public static void clear(boolean rollbackOrCommit) {
+        Integer c = Trans.count.get();
+        if (c == null)
+            return;
+        if (c > 0) {
+            for (int i = 0; i < c; i++) {
+                try {
+                    if (rollbackOrCommit)
+                        Trans.rollback();
+                    else
+                        Trans.commit();
+                    Trans.close();
+                }
+                catch (Exception e) {
+                }
+            }
+        }
+        Trans.count.set(null);
+        Transaction t = get();
+        if (t != null)
+            t.close();
+        Trans.trans.set(null);
+    }
+    
+    public static void set(Transaction t) {
+        Trans.trans.set(t);
+    }
+    
+    public static Transaction New() {
+        return null == implClass ? new NutTransaction() : Mirror.me(implClass).born();
     }
 }

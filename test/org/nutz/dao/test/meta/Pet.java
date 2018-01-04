@@ -52,6 +52,17 @@ public class Pet {
     @Column
     private Timestamp birthday;
 
+    @Column
+    private float price;
+
+    public float getPrice() {
+        return price;
+    }
+
+    public void setPrice(float price) {
+        this.price = price;
+    }
+
     public int getId() {
         return id;
     }
@@ -106,5 +117,11 @@ public class Pet {
 
     public String toString() {
         return name;
+    }
+    
+    public Pet() {}
+    
+    public Pet(String name) {
+        this.name = name;
     }
 }

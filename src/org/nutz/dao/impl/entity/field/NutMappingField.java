@@ -1,8 +1,5 @@
 package org.nutz.dao.impl.entity.field;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
-
 import org.nutz.dao.entity.Entity;
 import org.nutz.dao.entity.MappingField;
 import org.nutz.dao.entity.Record;
@@ -10,10 +7,17 @@ import org.nutz.dao.entity.annotation.ColType;
 import org.nutz.dao.impl.entity.EntityObjectContext;
 import org.nutz.dao.jdbc.ValueAdaptor;
 import org.nutz.lang.segment.Segment;
+import org.nutz.log.Log;
+import org.nutz.log.Logs;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 public class NutMappingField extends AbstractEntityField implements MappingField {
 
 	private String columnName;
+	
+	private String columnNameInSql;
 
 	private ColType columnType;
 
@@ -30,6 +34,8 @@ public class NutMappingField extends AbstractEntityField implements MappingField
 	private boolean isId;
 
 	private boolean isName;
+
+	private boolean isVersion;
 
 	private boolean readonly;
 
@@ -50,6 +56,8 @@ public class NutMappingField extends AbstractEntityField implements MappingField
 	private boolean insert = true;
 
 	private boolean update = true;
+	
+	private static final Log log = Logs.get();
 
 	public NutMappingField(Entity<?> entity) {
 		super(entity);
@@ -64,19 +72,27 @@ public class NutMappingField extends AbstractEntityField implements MappingField
 		this.adaptor = adaptor;
 	}
 
-	public void injectValue(Object obj, Record rec) {
+	public void injectValue(Object obj, Record rec, String prefix) {
 		try {
-			Object val = rec.get(columnName);
+			Object val = rec.get(prefix == null ? columnName : prefix + columnName);
 			this.setValue(obj, val);
 		}
-		catch (Exception e) {}
+		catch (Exception e) {
+            if (log.isTraceEnabled()) {
+                log.tracef("columnName="+columnName, e);
+            }
+		}
 	}
 
-	public void injectValue(Object obj, ResultSet rs) {
+	public void injectValue(Object obj, ResultSet rs, String prefix) {
 		try {
-			this.setValue(obj, adaptor.get(rs, columnName));
+			this.setValue(obj, adaptor.get(rs, prefix == null ? columnName : prefix + columnName));
 		}
-		catch (SQLException e) {}
+		catch (SQLException e) {
+		    if (log.isTraceEnabled()) {
+		        log.tracef("columnName="+columnName, e);
+		    }
+		}
 	}
 
 	public String getColumnName() {
@@ -205,6 +221,10 @@ public class NutMappingField extends AbstractEntityField implements MappingField
 	public void setAsAutoIncreasement() {
 		this.autoIncreasement = true;
 	}
+	
+	public void setAutoIncreasement(boolean autoIncreasement) {
+        this.autoIncreasement = autoIncreasement;
+    }
 
 	public String getColumnComment() {
 		return columnComment;
@@ -238,4 +258,21 @@ public class NutMappingField extends AbstractEntityField implements MappingField
 		this.update = update;
 	}
 
+	public String getColumnNameInSql() {
+	    if (columnNameInSql != null)
+	        return columnNameInSql;
+	    return columnName;
+	}
+	
+	public void setColumnNameInSql(String columnNameInSql) {
+        this.columnNameInSql = columnNameInSql;
+    }
+
+	public boolean isVersion() {
+		return isVersion;
+	}
+
+	public void setAsVersion() {
+		this.isVersion = true;
+	}
 }

@@ -30,7 +30,7 @@ web.xml 中的映射 - url-pattern
 
 	通常，在 web.xml 中，我们可以声明各种 HttpServlet 子类， 为了能让某一个子类接受 URL， 就需要配置映射，众所周知
 	你可以通过 `<servlet-mapping>`，为你的 Servelet 增加一组至多组的配置：
-	{{{<web.xml>
+	{{{<XML>
 	<servlet-mapping>
 		<servlet-name>MyServletName</servlet-name>
 		<url-pattern>/*</url-pattern>
@@ -63,6 +63,8 @@ web.xml 中的映射 - url-pattern
 		
 	------------------------------------------------------------------------------------------
 	web.xml 中的目录匹配 - /abc/*
+		
+		这个方式仅对于NutServlet有效!!!
 		
 		转发到本 Context 的任何请求只要以 {* /abc/} 开头，都会调用这个 Servlet，比如：
 		
@@ -156,7 +158,7 @@ web.xml 中的映射 - url-pattern
 		最终确定了 URL {* /a/b/c} 要匹配的入口函数。
 	
 		所以要想匹配 {* /a/b/c} 下面几种形式都是可以的
-		{{{
+		{{{<JAVA>
 		@At("/a")
 		public class MainModule{
 		   ...
@@ -169,7 +171,7 @@ web.xml 中的映射 - url-pattern
 			 ...
 		}}}
 		或者
-		{{{
+		{{{<JAVA>
 		public class MainModule{
 		   ...
 	
@@ -181,7 +183,7 @@ web.xml 中的映射 - url-pattern
 			 ...
 		}}}
 		或者
-		{{{
+		{{{<JAVA>
 		public class MainModule{
 		   ...
 	
@@ -192,10 +194,10 @@ web.xml 中的映射 - url-pattern
 			 ...
 		}}}
 	
-		当然，一般的说，很少有人在主模块上声明 @At
+		当然，一般的说，很少有人在主模块上声明 @At, 严重不建议这样做!!!
 
 		{*#F00;注:} 使用不带参数的@At()注解, 默认会使用方法名/类名的小写做为入口地址!
-        {{{
+        {{{<JAVA>
         // 比如 
         @At
         public String getPet() {
@@ -218,7 +220,7 @@ web.xml 中的映射 - url-pattern
 	Nutz 中的全匹配 - /*
 	
 		如果请求为：
-		{{{
+		{{{<JAVA>
 		http://localhost:8080/testweb/abc/getlist.nut
 		}}}
 		对于 Nutz.Mvc 我们需要匹配的部分为：
@@ -227,9 +229,11 @@ web.xml 中的映射 - url-pattern
 		
 	------------------------------------------------------------------------------------------
 	Nutz 中的目录匹配 - /abc/*
+	
+		仅对NutServlet有效!!
 		
 		如果请求为：
-		{{{
+		{{{<JAVA>
 		http://localhost:8080/testweb/abc/getlist.nut
 		}}}
 		对于 Nutz.Mvc 我们需要匹配的部分为：
@@ -272,5 +276,55 @@ web.xml 中的映射 - url-pattern
 		
 		这种映射方式基本是不会发生的，因为你需要让 Nutz.Mvc 控制一批 URL 而不是单个 URL。所以，你如果选择了这种模式
 		我就没话讲了，在 Nutz.Mvc 中你就全部匹配吧，惩罚你，哼！
+----------------------------------------------------------------------------------------------
+Nutz 中的Mvc注解继承
 
-
+	自1.r.55 起，Nutz中加入了注解继承功能，举个栗子:
+	{{{<JAVA>
+	// 父类
+	@Ok("jsp")
+	public abstract class RestfulAction{
+	    @At @GET
+	    public void list() {
+	    	
+	    }
+	    @At @GET @Ok("json")
+	    public QueryResult search() {
+	    	return null;
+	    }
+	}
+	// 子类
+	@At("/items") //父类的@Ok("jsp")在这里生效
+	public class MyAction extends RestfulAction {
+	    @Override
+	    public void list() {} //父类的@At @GET在这里生效
+	    @Override
+	    public QueryResult search() {} //父类的@At @GET @Ok("json")在这里生效
+	}
+	}}}
+	看到了吧，是不是很容易，父类的所有Mvc注解，都对应的在子类上生效，这个功能的初衷是可以让你少写那么一点配置信息，毕竟整天搬砖都是CRUD，虽然Nutz已经足够简便了，但配置写多了也会吐 ^_^
+	注意：{#FF0000;*这个版本中，子类还是要复写一下父类的方法，才能获得对应的入口方法映射，复写哪个，就会获得哪个}
+	------------------------------------------------------------------------------------------
+	自1.r.61起，wendal 加入了默认继承所有父类入口方法的功能，比如上面的例子，父类不变，子类这样写
+	{{{<JAVA>
+	@At("/items")
+	public class MyAction extends RestfulAction {
+	}
+	}}}
+	即可继承两个入口方法：
+	1. /items/list
+	2. /items/search
+	------------------------------------------------------------------------------------------
+	鉴于默认继承的特性，杀伤力太大，所以1.r.63中，增加了入口方法决断机制
+	你只要自己实现一个org.nutz.mvc.EntryDeterminer，然后在MainModule上申明下注解@Determiner使用它就好了，比如这样：
+	{{{<JAVA>
+	@Determiner(MyDeterminer.class)
+	public class MainModule {}
+	}}}
+	当然，EntryDeterminer也支持从Ioc中获取，像这样
+	{{{<JAVA>
+	@Determiner(value = MyDeterminer.class, args = {"ioc:myDeterminer"})
+	public class MainModule {}
+	}}}
+	其中 "myDeterminer" 就是你这个决断期在 Ioc 容器中的名字。
+	

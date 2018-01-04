@@ -2,13 +2,14 @@ package org.nutz.dao.sql;
 
 import org.nutz.dao.Condition;
 import org.nutz.dao.entity.Entity;
+import org.nutz.dao.entity.Record;
 import org.nutz.dao.jdbc.ValueAdaptor;
-import org.nutz.dao.pager.Pager;
 
 /**
  * 封装了自定义 SQL
  * 
  * @author zozoh(zozohtnt@gmail.com)
+ * @author wendal(wendal1985@gmail.com)
  */
 public interface Sql extends DaoStatement {
 
@@ -20,6 +21,15 @@ public interface Sql extends DaoStatement {
      * @return 变量集合
      */
     VarSet vars();
+    
+    /**
+     * sql.vars().set(name, value)的链式调用方式
+     * @param name 变量名称
+     * @param value 变量值
+     * @return 原Sql对象,用于链式调用
+     * @see #vars()
+     */
+    Sql setVar(String name, Object value);
 
     /**
      * 所谓"参数"，就是当 Sql 对象转换成 PreparedStatement 对象前，会被填充成 ? 的占位符
@@ -30,6 +40,15 @@ public interface Sql extends DaoStatement {
      * @return 参数集合
      */
     VarSet params();
+    
+    /**
+     * sql.params().set(name, value)的链式调用方式
+     * @param name 参数名称
+     * @param value 参数值
+     * @return 原Sql对象,用于链式调用
+     * @see #params()
+     */
+    Sql setParam(String name, Object value);
 
     /**
      * 手动为某个语句参数设置适配器。
@@ -96,15 +115,27 @@ public interface Sql extends DaoStatement {
      */
     Sql duplicate();
 
-    public void setSourceSql(String sql) ;
-    
-    public String getSourceSql() ;
+    /**
+     * 设置原始SQL,将重新解析里面的占位符
+     * @param sql
+     */
+    void setSourceSql(String sql);
     
     /**
-     * 为自定义SQL设置Pager
-     * <p/><b>如果设置为非空值,那么将附加上分页语句!!</b>
-     * <p/><b>由于不带SQL语法分析,无法探知用户是否已经自行添加分页语句!!</b>
-     * <p/><b>使用这个功能,你就不要自己在SQL里面写limit了!!!</b>
+     * 获取原始SQL
      */
-    public DaoStatement setPager(Pager pager);
+    String getSourceSql();
+    
+    /**
+     * 获取存储过程的出参
+     */
+    Record getOutParams();
+    
+    /**
+     * 修改原有的占位符(默认是$和@),并重新解析.仅作用于当前SQL对象
+     * @param param 参数占位符,默认是@
+     * @param var 变量占位符,默认是$
+     * @return 当前SQL对象
+     */
+    Sql changePlaceholder(char param, char var);
 }

@@ -2,14 +2,23 @@ package org.nutz.dao.impl;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
 
 import javax.sql.DataSource;
 
 import org.nutz.dao.ConnCallback;
+import org.nutz.dao.DaoInterceptor;
+import org.nutz.dao.DaoInterceptorChain;
 import org.nutz.dao.DatabaseMeta;
 import org.nutz.dao.SqlManager;
 import org.nutz.dao.entity.EntityMaker;
 import org.nutz.dao.impl.entity.AnnotationEntityMaker;
+import org.nutz.dao.impl.interceptor.DaoLogInterceptor;
+import org.nutz.dao.impl.interceptor.DaoTimeInterceptor;
 import org.nutz.dao.impl.sql.NutPojoMaker;
 import org.nutz.dao.impl.sql.run.NutDaoExecutor;
 import org.nutz.dao.impl.sql.run.NutDaoRunner;
@@ -19,10 +28,12 @@ import org.nutz.dao.sql.DaoStatement;
 import org.nutz.dao.sql.PojoMaker;
 import org.nutz.dao.sql.Sql;
 import org.nutz.dao.sql.SqlContext;
+import org.nutz.dao.util.Daos;
+import org.nutz.lang.Lang;
+import org.nutz.lang.Mirror;
+import org.nutz.lang.Strings;
 import org.nutz.log.Log;
 import org.nutz.log.Logs;
-import org.nutz.trans.Atom;
-import org.nutz.trans.Trans;
 
 /**
  * Dao 接口实现类的一些基础环境
@@ -66,16 +77,21 @@ public class DaoSupport {
     /**
      * 数据库的描述
      */
-    private DatabaseMeta meta;
+    protected DatabaseMeta meta;
 
     /**
      * SQL 管理接口实现类
      */
-    private SqlManager sqlManager;
+    protected SqlManager sqlManager;
+    
+    protected int autoTransLevel = Connection.TRANSACTION_READ_COMMITTED;
+    
+    protected List<DaoInterceptor> _interceptors;
 
     public DaoSupport() {
         this.runner = new NutDaoRunner();
         this.executor = new NutDaoExecutor();
+        this.setInterceptors(Lang.list((Object)"log"));
     }
 
     /**
@@ -100,6 +116,10 @@ public class DaoSupport {
      */
     public void setSqlManager(SqlManager sqls) {
         this.sqlManager = sqls;
+        if (sqls != null) {
+            int count = sqls.count();
+            log.debug("SqlManager Sql count=" + count);
+        }
     }
 
     /**
@@ -110,6 +130,9 @@ public class DaoSupport {
      */
     public void setRunner(DaoRunner runner) {
         this.runner = runner;
+        if (runner instanceof NutDaoRunner) {
+        	((NutDaoRunner)runner).setMeta(meta);
+        }
     }
 
     /**
@@ -120,6 +143,10 @@ public class DaoSupport {
      */
     public void setExecutor(DaoExecutor executor) {
         this.executor = executor;
+        if (executor instanceof NutDaoExecutor) {
+        	((NutDaoExecutor)executor).setMeta(meta);
+        	((NutDaoExecutor)executor).setExpert(expert);
+        }
     }
 
     /**
@@ -148,32 +175,59 @@ public class DaoSupport {
      *            数据源
      */
     public void setDataSource(DataSource ds) {
+        setDataSource(ds,false);
+    }
+    
+    public void setDataSource(DataSource ds,boolean isLazy) {
         if (null != dataSource)
             if (log.isWarnEnabled())
                 log.warn("Replaced a running dataSource!");
         dataSource = ds;
-        expert = Jdbcs.getExpert(ds);
+        if (expert == null)
+            expert = Jdbcs.getExpert(ds);
+        log.debug("select expert : " + expert.getClass().getName());
         pojoMaker = new NutPojoMaker(expert);
 
         meta = new DatabaseMeta();
-        runner.run(dataSource, new ConnCallback() {
+        final Set<String> keywords = new HashSet<String>(Daos.sql2003Keywords());
+        run(new ConnCallback() {
             public void invoke(Connection conn) throws Exception {
-                DatabaseMetaData dmd = conn.getMetaData();
-                meta.setProductName(dmd.getDatabaseProductName());
-                meta.setVersion(dmd.getDatabaseProductVersion());
-                log.debug("JDBC Driver --> " + dmd.getDriverVersion());
-                log.debug("JDBC Name   --> " + dmd.getDriverName());
-                if (dmd.getDriverName().contains("mariadb") || dmd.getDriverName().contains("sqlite")) {
-                	log.warn("Auto-select fetch size to Integer.MIN_VALUE, enable for ResultSet Streaming");
-                	SqlContext.DEFAULT_FETCH_SIZE = Integer.MIN_VALUE;
+                try {
+                    DatabaseMetaData dmd = conn.getMetaData();
+                    meta.setProductName(dmd.getDatabaseProductName());
+                    meta.setVersion(dmd.getDatabaseProductVersion());
+                    log.debug("JDBC Driver --> " + dmd.getDriverVersion());
+                    log.debug("JDBC Name   --> " + dmd.getDriverName());
+                    if (!Strings.isBlank(dmd.getURL()))
+                        log.debug("JDBC URL    --> " + dmd.getURL());
+                    if (dmd.getDriverName().contains("mariadb") || dmd.getDriverName().contains("sqlite")) {
+                        log.warn("Auto-select fetch size to Integer.MIN_VALUE, enable for ResultSet Streaming");
+                        SqlContext.DEFAULT_FETCH_SIZE = Integer.MIN_VALUE;
+                    }
+                    String tmp = dmd.getSQLKeywords();
+                    if (tmp != null) {
+                        for (String keyword : tmp.split(",")) {
+                            keywords.add(keyword.toUpperCase());
+                        }
+                    }
+                    expert.checkDataSource(conn);
+                }
+                catch (Exception e) {
+                    log.info("something wrong when checking DataSource", e);
                 }
             }
         });
         if (log.isDebugEnabled())
             log.debug("Database info --> " + meta);
+        expert.setKeywords(keywords);
 
-        holder = new EntityHolder(this);
-        holder.maker = createEntityMaker();
+        if(!isLazy)
+        {
+            holder = new EntityHolder(this.expert, dataSource);
+            holder.maker = createEntityMaker();
+        }
+        setRunner(runner);
+        setExecutor(executor);
     }
 
     public void execute(final Sql... sqls) {
@@ -187,30 +241,17 @@ public class DaoSupport {
     }
 
     protected int _exec(final DaoStatement... sts) {
-        // 看看是不是都是 SELECT 语句
-        boolean isAllSelect = true;
-        for (DaoStatement st : sts) {
-            if (!st.isSelect()) {
-                isAllSelect = false;
-                break;
+        if (sts != null)
+            for (DaoStatement ds : sts) {
+                ds.setExpert(expert);
             }
-        }
-        // 这个是具体执行的逻辑，作为一个回调
-        // 后面的逻辑是判断到底应不应该在一个事务里运行它
-        DaoExec callback = new DaoExec(sts);
-
-        // 如果强制没有事务或者都是 SELECT，没必要启动事务
-        if (sts.length == 1 || isAllSelect || Trans.isTransactionNone()) {
-            runner.run(dataSource, callback);
-        }
-        // 否则启动事务
-        // wendal: 还是很有必要的!!尤其是解决insert的@Prev/@Next不在同一个链接的问题
-        else {
-            Trans.exec(callback);
-        }
-
+        final DaoInterceptorChain callback = new DaoInterceptorChain(sts);
+        callback.setExecutor(executor);
+        callback.setAutoTransLevel(autoTransLevel);
+        callback.setInterceptors(Collections.unmodifiableList(this._interceptors));
+        run(callback);
         // 搞定，返回结果 ^_^
-        return callback.re;
+        return callback.getUpdateCount();
     }
 
     /**
@@ -221,34 +262,65 @@ public class DaoSupport {
     protected EntityMaker createEntityMaker() {
         return new AnnotationEntityMaker(dataSource, expert, holder);
     }
-
-    /**
-     * 
-     * @author wendal
-     * @since 1.b.44
-     */
-    protected class DaoExec implements Atom, ConnCallback {
-        private DaoStatement[] sts;
-        private int re;
-
-        public DaoExec(DaoStatement... sts) {
-            this.sts = sts;
+    
+    public PojoMaker pojoMaker() {
+		return pojoMaker;
+	}
+    
+    public void setAutoTransLevel(int autoTransLevel) {
+        this.autoTransLevel = autoTransLevel;
+    }
+    
+    public void setInterceptors(List<Object> interceptors) {
+        List<DaoInterceptor> list = new LinkedList<DaoInterceptor>();
+        for (Object it : interceptors) {
+            DaoInterceptor d = makeInterceptor(it);
+            if (d != null)
+                list.add(d);
         }
-
-        public void run() {
-            runner.run(dataSource, this);
+        this._interceptors = list;
+    }
+    
+    public void addInterceptor(Object it) {
+        DaoInterceptor d = makeInterceptor(it);
+        if (d != null) {
+            List<DaoInterceptor> list = new LinkedList<DaoInterceptor>(this._interceptors);
+            list.add(d);
+            this._interceptors = list;
         }
-
-        public void invoke(Connection conn) throws Exception {
-            for (DaoStatement st : sts) {
-                if (st == null) {
-                    if (log.isInfoEnabled())
-                        log.info("Found a null DaoStatement(SQL), ingore it ~~");
-                    continue;
+    }
+    
+    public DaoInterceptor makeInterceptor(Object it) {
+        if (it == null)
+            return null;
+        if (it instanceof String) {
+            String itName = it.toString().trim();
+            if ("log".equals(itName)) {
+                return new DaoLogInterceptor();
+            }
+            else if ("time".equals(itName)) {
+                return new DaoTimeInterceptor();
+            } 
+            else if (itName.contains(".")) {
+                Class<?> klass = Lang.loadClassQuite(itName);
+                if (klass == null) {
+                    log.warn("no such interceptor name="+itName);
+                } else {
+                    return (DaoInterceptor) Mirror.me(klass).born();
                 }
-                executor.exec(conn, st);
-                re += st.getUpdateCount();
+            } else {
+                log.info("unkown interceptor name="+itName);
             }
         }
+        else if (it instanceof DaoInterceptor) {
+            return (DaoInterceptor) it;
+        } else {
+            log.info("unkown interceptor -> "+it);
+        }
+        return null;
+    }
+    
+    public DataSource getDataSource() {
+        return dataSource;
     }
 }

@@ -1,7 +1,9 @@
 package org.nutz.ioc.meta;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.nutz.json.Json;
 
@@ -30,6 +32,11 @@ public class IocObject implements Cloneable {
 
     /**
      * 对象监听何种事件
+     * <ul>
+     * <li>"fetch" - 每次对象被 ioc.get 的时候，触发
+     * <li>"create" - 当且仅当对象被 new 的时候触发
+     * <li>"depose" - 当对象被容器销毁时触发
+     * </ul>
      */
     private IocEventSet events;
 
@@ -41,19 +48,19 @@ public class IocObject implements Cloneable {
     /**
      * 对象的字段
      */
-    private List<IocField> fields;
+    private Map<String, IocField> fields;
 
     /**
      * 对象基本，容器根据这个字段，来决定将这个对象保存在哪一个上下文范围中<br>
      * 默认的为 "app"
      */
     private String scope;
-    
+
     private String factory;
 
     public IocObject() {
         args = new ArrayList<IocValue>();
-        fields = new ArrayList<IocField>();
+        fields = new LinkedHashMap<String, IocField>();
         singleton = true;
     }
 
@@ -108,35 +115,32 @@ public class IocObject implements Cloneable {
         }
     }
 
-    public IocField[] getFields() {
-        return fields.toArray(new IocField[fields.size()]);
+    public Map<String, IocField> getFields() {
+        return fields;
     }
 
     public void addField(IocField field) {
-        this.fields.add(field);
+        this.fields.put(field.getName(), field);
     }
 
     public boolean hasField(String name) {
-        for (IocField fld : fields)
-            if (fld.getName().equals(name))
-                return true;
-        return false;
+        return fields.containsKey(name);
     }
 
     public IocObject clone() {
         return Json.fromJson(IocObject.class, Json.toJson(this));
     }
-    
+
     @Override
     public String toString() {
         return Json.toJson(this);
     }
 
-	public void setFactory(String factory) {
-		this.factory = factory;
-	}
-	
-	public String getFactory() {
-		return factory;
-	}
+    public void setFactory(String factory) {
+        this.factory = factory;
+    }
+
+    public String getFactory() {
+        return factory;
+    }
 }

@@ -14,12 +14,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.nutz.json.entity.JsonEntity;
+import org.nutz.json.impl.JsonEntityFieldMakerImpl;
 import org.nutz.json.impl.JsonRenderImpl;
 import org.nutz.lang.Files;
 import org.nutz.lang.Lang;
 import org.nutz.lang.Mirror;
 import org.nutz.lang.Streams;
 import org.nutz.lang.util.NutType;
+import org.nutz.lang.util.PType;
 import org.nutz.mapl.Mapl;
 
 public class Json {
@@ -91,6 +93,18 @@ public class Json {
     public static Object fromJson(Type type, CharSequence cs)
             throws JsonException {
         return fromJson(type, Lang.inr(cs));
+    }
+    
+    @SuppressWarnings("unchecked")
+    public static <T> T fromJson(PType<T> type, Reader reader)
+            throws JsonException {
+        return (T) fromJson((Type)type, reader);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> T fromJson(PType<T> type, CharSequence cs)
+            throws JsonException {
+        return (T)fromJson((Type)type, cs);
     }
 
     /**
@@ -213,13 +227,13 @@ public class Json {
     public static void toJson(Writer writer, Object obj, JsonFormat format) {
         try {
             if (format == null)
-                format = JsonFormat.nice();
-
+                format = deft;
+            JsonRender jr;
             Class<? extends JsonRender> jrCls = getJsonRenderCls();
             if (jrCls == null)
-                jrCls = JsonRenderImpl.class;
-
-            JsonRender jr = Mirror.me(jrCls).born();
+                jr = new JsonRenderImpl();
+            else
+            	jr = Mirror.me(jrCls).born();
             jr.setWriter(writer);
             jr.setFormat(format);
             jr.render(obj);
@@ -412,5 +426,19 @@ public class Json {
         return (Map<String, T>) fromJson(NutType.mapStr(eleType), reader);
     }
 
-    // ==============================================================================
+    protected static JsonFormat deft = JsonFormat.nice();
+    public static void setDefaultJsonformat(JsonFormat defaultJf) {
+        if (defaultJf == null)
+            defaultJf = JsonFormat.nice();
+        Json.deft = defaultJf;
+    }
+
+    private static JsonEntityFieldMaker deftMaker = new JsonEntityFieldMakerImpl();
+    public static void setDefaultFieldMaker(JsonEntityFieldMaker fieldMaker) {
+        if (fieldMaker != null)
+            Json.deftMaker = fieldMaker;
+    }
+    public static JsonEntityFieldMaker getDefaultFieldMaker() {
+        return deftMaker;
+    }
 }

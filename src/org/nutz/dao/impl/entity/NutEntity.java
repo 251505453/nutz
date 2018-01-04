@@ -1,20 +1,8 @@
 package org.nutz.dao.impl.entity;
 
-import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import org.nutz.dao.DaoException;
 import org.nutz.dao.FieldMatcher;
-import org.nutz.dao.entity.Entity;
-import org.nutz.dao.entity.EntityIndex;
-import org.nutz.dao.entity.LinkField;
-import org.nutz.dao.entity.LinkVisitor;
-import org.nutz.dao.entity.MappingField;
-import org.nutz.dao.entity.PkType;
-import org.nutz.dao.entity.Record;
+import org.nutz.dao.entity.*;
 import org.nutz.dao.sql.Pojo;
 import org.nutz.lang.Lang;
 import org.nutz.lang.Mirror;
@@ -22,6 +10,12 @@ import org.nutz.lang.born.BornContext;
 import org.nutz.lang.born.Borning;
 import org.nutz.lang.born.Borns;
 import org.nutz.lang.util.Context;
+
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 记录一个实体
@@ -98,6 +92,11 @@ public class NutEntity<T> implements Entity<T> {
     private MappingField theName;
 
     /**
+     * version字段映射
+     */
+    private MappingField theVersion;
+
+    /**
      * 实体 Java 类型
      */
     protected Class<T> type;
@@ -156,8 +155,10 @@ public class NutEntity<T> implements Entity<T> {
      * 实体的主键类型
      */
     private PkType pkType;
+    
+    private boolean complete;
 
-    public NutEntity(Class<T> type) {
+    public NutEntity(final Class<T> type) {
         this.type = type;
         this.mirror = Mirror.me(type);
         this.byJava = new HashMap<String, MappingField>();
@@ -193,8 +194,12 @@ public class NutEntity<T> implements Entity<T> {
         this.manys = new LinkFieldSet();
         this.manymanys = new LinkFieldSet();
     }
-
+    
     public T getObject(ResultSet rs, FieldMatcher matcher) {
+        return getObject(rs, matcher, null);
+    }
+
+    public T getObject(ResultSet rs, FieldMatcher matcher, String prefix) {
         // 构造时创建对象
         if (null != bornByRS)
             return bornByRS.born(rs);
@@ -203,20 +208,24 @@ public class NutEntity<T> implements Entity<T> {
         T re = bornByDefault.born(EMTRY_ARG);
         if (null == matcher)
             for (MappingField fld : fields)
-                fld.injectValue(re, rs);
+                fld.injectValue(re, rs, prefix);
         else
             for (MappingField fld : fields)
                 if (matcher.match(fld.getName()))
-                    fld.injectValue(re, rs);
+                    fld.injectValue(re, rs, prefix);
 
         // 返回构造的对象
         return re;
     }
-
+    
     public T getObject(Record rec) {
+        return getObject(rec, null);
+    }
+
+    public T getObject(Record rec, String prefix) {
         T obj = bornByDefault.born(EMTRY_ARG);
         for (MappingField fld : fields)
-            fld.injectValue(obj, rec);
+            fld.injectValue(obj, rec, prefix);
         return obj;
 
     }
@@ -256,6 +265,10 @@ public class NutEntity<T> implements Entity<T> {
             theId = field;
         else if (field.isName())
             theName = field;
+      //wjw(2017-04-10),add,乐观锁
+        else if (field.isVersion())
+        	theVersion =field;
+        
         byJava.put(field.getName(), field);
         byDB.put(field.getColumnName(), field);
         fields.add(field);
@@ -292,7 +305,7 @@ public class NutEntity<T> implements Entity<T> {
      */
     public void addIndex(EntityIndex index) {
         indexes.add(index);
-        indexMap.put(index.getName(), index);
+        indexMap.put(index.getName(this), index);
     }
 
     public Context wrapAsContext(Object obj) {
@@ -370,6 +383,10 @@ public class NutEntity<T> implements Entity<T> {
 
     public MappingField getNameField() {
         return this.theName;
+    }
+
+    public MappingField getVersionField() {
+    	return this.theVersion;
     }
 
     public MappingField getIdField() {
@@ -472,5 +489,19 @@ public class NutEntity<T> implements Entity<T> {
 
     public String getColumnComent(String columnName) {
         return columnComments.get(columnName);
+    }
+
+    public boolean isComplete() {
+        return complete;
+    }
+
+    public void setComplete(boolean complete) {
+        this.complete = complete;
+    }
+    
+    public T born(ResultSet rs) {
+        if (null != bornByRS)
+            return bornByRS.born(rs);
+        return bornByDefault.born(EMTRY_ARG);
     }
 }

@@ -14,6 +14,84 @@ import org.junit.Test;
 
 public class StringsTest {
 
+    @Test
+    public void test_replaceBy() {
+        assertEquals("xB-", Strings.replaceBy("ABC", Lang.map("{A:'x',C:'-'}")));
+        assertEquals("AB-x", Strings.replaceBy("ABCA", Lang.map("{A:'x',C:'-',AB:null}")));
+        assertEquals("AB-AD-x",
+                     Strings.replaceBy("ABCADCA", Lang.map("{A:'x',C:'-',D:'$','A[BD]':null}")));
+    }
+
+    @Test
+    public void test_line_2_hump() {
+        assertEquals(Strings.line2Hump("f_parent_no_leader"), "FParentNoLeader");
+    }
+
+    @Test
+    public void test_hump_2_line() {
+        assertEquals(Strings.hump2Line("fParentNoLeader"), "f_parent_no_leader");
+    }
+
+    @Test
+    public void test_split_with_escape_quote() {
+        String[] list = Strings.split("a \"nm:\\\"A\\\"\"", false, ' ');
+        assertEquals(2, list.length);
+        assertEquals("a", list[0]);
+        assertEquals("nm:\"A\"", list[1]);
+    }
+
+    @Test
+    public void test_split_by_whitespace() {
+        String[] list = Strings.split("  a   b   ", false, ' ');
+        assertEquals(2, list.length);
+        assertEquals("a", list[0]);
+        assertEquals("b", list[1]);
+    }
+
+    @Test
+    public void test_by_eacape() {
+        String[] list = Strings.split("a\\nb | a\\ b", true, '|');
+        assertEquals(2, list.length);
+        assertEquals("a\\nb ", list[0]);
+        assertEquals(" a\\ b", list[1]);
+    }
+
+    @Test
+    public void test_by_escape_in_quote() {
+        String[] list = Strings.split("me -set \"PS1=\\u:\\W$\"", true, '|');
+        assertEquals(1, list.length);
+        assertEquals("me -set \"PS1=\\u:\\W$\"", list[0]);
+    }
+
+    @Test
+    public void test_pipes_parse2() {
+        String[] list = Strings.split("a | b 'x' | d ", true, '|');
+        assertEquals(3, list.length);
+        assertEquals("a ", list[0]);
+        assertEquals(" b 'x' ", list[1]);
+        assertEquals(" d ", list[2]);
+    }
+
+    @Test
+    public void test_pipes_parse() {
+        String[] list = Strings.split(" a 'x' ", true, '|');
+        assertEquals(1, list.length);
+        assertEquals(" a 'x' ", list[0]);
+    }
+
+    @Test
+    public void test_tokens_parse() {
+        String[] list = Strings.split("echo 'a'bc", true, ' ');
+        assertEquals(2, list.length);
+        assertEquals("echo", list[0]);
+        assertEquals("'a'bc", list[1]);
+
+        list = Strings.split("echo 'a b'", false, ' ');
+        assertEquals(2, list.length);
+        assertEquals("echo", list[0]);
+        assertEquals("a b", list[1]);
+    }
+
     /**
      * for issue #606 (report by <a href="https://github.com/Rekoe">Rekoe</a>)
      */
@@ -160,10 +238,8 @@ public class StringsTest {
         assertEquals("multi world", Strings.trim(" multi world "));
         assertEquals("nutz加油", Strings.trim(" nutz加油 "));
         assertEquals("", Strings.trim(new StringBuffer("    ")));
-        assertEquals("multi world",
-                     Strings.trim(new StringBuffer("multi world")));
-        assertEquals("multi world",
-                     Strings.trim(new StringBuffer(" multi world ")));
+        assertEquals("multi world", Strings.trim(new StringBuffer("multi world")));
+        assertEquals("multi world", Strings.trim(new StringBuffer(" multi world ")));
         assertEquals("nutz加油", Strings.trim(new StringBuilder(" nutz加油 ")));
     }
 
@@ -171,12 +247,9 @@ public class StringsTest {
     public void test_split_ignore_blank() {
         assertArrayEquals(null, Strings.splitIgnoreBlank(null));
         assertArrayEquals(new String[]{}, Strings.splitIgnoreBlank(" "));
-        assertArrayEquals(new String[]{"2", "3", "5"},
-                          Strings.splitIgnoreBlank("2,3,, 5"));
-        assertArrayEquals(new String[]{"2", "3", "5", "6"},
-                          Strings.splitIgnoreBlank("2,3,, 5,6,"));
-        assertArrayEquals(new String[]{"2,3,5,6,"},
-                          Strings.splitIgnoreBlank("2,3,5,6,", ",,"));
+        assertArrayEquals(new String[]{"2", "3", "5"}, Strings.splitIgnoreBlank("2,3,, 5"));
+        assertArrayEquals(new String[]{"2", "3", "5", "6"}, Strings.splitIgnoreBlank("2,3,, 5,6,"));
+        assertArrayEquals(new String[]{"2,3,5,6,"}, Strings.splitIgnoreBlank("2,3,5,6,", ",,"));
         assertArrayEquals(new String[]{"2,3", "5", "6,"},
                           Strings.splitIgnoreBlank("2,3 ,,5,,6,", ",,"));
         assertArrayEquals(new String[]{"2,3", "5", "6,"},
@@ -374,8 +447,8 @@ public class StringsTest {
     public void test_escape_html() {
         assertEquals("&lt;/article&gt;Oops &lt;script&gt;alert(&quot;hello world&quot;);&lt;/script&gt;",
                      Strings.escapeHtml("</article>Oops <script>alert(\"hello world\");</script>"));
-        assertEquals("alert(&#x27;hello world&#x27;);",
-                     Strings.escapeHtml("alert('hello world');"));
+        assertEquals("alert('hello world');", Strings.escapeHtml("alert('hello world');"));
+        assertEquals("&lt;b&gt;&amp;XYZ&lt;/b&gt;", Strings.escapeHtml("<b>&amp;XYZ</b>"));
     }
 
     @Test
@@ -386,9 +459,7 @@ public class StringsTest {
         StringBuilder here_is_zenkaku_space_sber = new StringBuilder(here_is_zenkaku_space_str);
 
         assertEquals("aaa",
-                     Strings.trim(here_is_zenkaku_space_str
-                                  + "aaa"
-                                  + here_is_zenkaku_space_str));
+                     Strings.trim(here_is_zenkaku_space_str + "aaa" + here_is_zenkaku_space_str));
         assertEquals("aaa",
                      Strings.trim(here_is_zenkaku_space_sb.append("aaa")
                                                           .append(here_is_zenkaku_space_char)));
@@ -397,4 +468,17 @@ public class StringsTest {
                                                             .append(here_is_zenkaku_space_char)));
     }
 
+    @Test
+    public void test_join_array() throws Exception {
+        assertTrue("1920x1080".equals(Strings.join("x", new String[]{"1920", "1080"})));
+        assertTrue("1920x1080".equals(Strings.join("x", new Integer[]{1920, 1080})));
+    }
+
+    @Test
+    public void test_change_charset() throws Exception {
+        assertTrue("你妹的".equals(Strings.changeCharset("\u4f60\u59b9\u7684",
+                                                      Encoding.CHARSET_UTF8)));
+        assertTrue("nutz是个好类库".equals(Strings.changeCharset("nutz\u662f\u4e2a\u597d\u7c7b\u5e93",
+                                                            Encoding.CHARSET_UTF8)));
+    }
 }

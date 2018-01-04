@@ -3,6 +3,7 @@ package org.nutz.ioc.json;
 import static org.junit.Assert.*;
 
 import org.junit.Test;
+import org.nutz.Nutzs;
 import org.nutz.ioc.Ioc;
 import org.nutz.ioc.IocLoader;
 import org.nutz.ioc.impl.NutIoc;
@@ -13,6 +14,7 @@ public class AopJsonIocTest {
 
     @Test
     public void test_simple() {
+    	Nutzs.cd();
         IocLoader il = new JsonLoader("org/nutz/ioc/json/aop.js");
         Ioc ioc = new NutIoc(il);
         StringBuilder sb = ioc.get(StringBuilder.class, "sb");
@@ -25,5 +27,6 @@ public class AopJsonIocTest {
         fox.getName();
         assertEquals("B:getName0;A:getName0;B:getName0;A:getName0;", sb.toString());
 
+    	ioc.depose();
     }
 }

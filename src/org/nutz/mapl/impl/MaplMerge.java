@@ -1,7 +1,7 @@
 package org.nutz.mapl.impl;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,7 +49,7 @@ public class MaplMerge {
      * @return
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private Object mergeObj(Object[] objs) {
+    private static Object mergeObj(Object[] objs) {
         List list = new ArrayList();
         for (Object obj : objs) {
             if (list.contains(obj)) {
@@ -67,7 +67,7 @@ public class MaplMerge {
      * @return
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private Object mergeList(Object... objs) {
+    private static Object mergeList(Object... objs) {
         List list = new ArrayList();
         for (Object li : objs) {
             List src = (List) li;
@@ -87,8 +87,8 @@ public class MaplMerge {
      * @return
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private Object mergeMap(Object... objs) {
-        Map obj = new HashMap();
+    private static Object mergeMap(Object... objs) {
+        Map obj = new LinkedHashMap();
         for (int i = 0; i < objs.length; i++) {
             Map map = (Map) objs[i];
             for (Object key : map.keySet()) {

@@ -2,14 +2,18 @@ package org.nutz.lang.util;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.Reader;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.nutz.lang.Encoding;
 import org.nutz.lang.Strings;
 
 /**
@@ -18,6 +22,8 @@ import org.nutz.lang.Strings;
  * @author zozoh(zozohtnt@gmail.com)
  */
 public class MultiLineProperties implements Map<String, String> {
+    
+
 
     public MultiLineProperties(Reader reader) throws IOException {
         this();
@@ -25,7 +31,7 @@ public class MultiLineProperties implements Map<String, String> {
     }
 
     public MultiLineProperties() {
-        maps = new HashMap<String, String>();
+        maps = new LinkedHashMap<String, String>();
     }
 
     protected Map<String, String> maps;
@@ -40,8 +46,7 @@ public class MultiLineProperties implements Map<String, String> {
         load(reader, false);
     }
 
-    public synchronized void load(Reader reader, boolean clear)
-            throws IOException {
+    public synchronized void load(Reader reader, boolean clear) throws IOException {
         if (clear)
             this.clear();
         BufferedReader tr = null;
@@ -64,7 +69,27 @@ public class MultiLineProperties implements Map<String, String> {
             }
             if (c == '=') {
                 String name = s.substring(0, pos);
-                maps.put(Strings.trim(name), s.substring(pos + 1));
+                String value = s.substring(pos + 1);
+                if (value.endsWith("\\") && !value.endsWith("\\\\")) {
+                    StringBuilder sb = new StringBuilder(value.substring(0, value.length() - 1));
+                    while (null != (s = tr.readLine())) {
+                        if (Strings.isBlank(s))
+                            break;
+                        if (s.endsWith("\\") && !s.endsWith("\\\\")) {
+                            sb.append(s.substring(0, s.length() - 1));
+                        } else {
+                            sb.append(s);
+                            break;
+                        }
+                    }
+                    value = sb.toString();
+                }
+                // 对value里面的\\uXXXX进行转义?
+                if (value.contains("\\u")) {
+                    value = Strings.unicodeDecode(value);
+                }
+                value = value.replace("\\:", ":").replace("\\=", "=");
+                maps.put(Strings.trim(name), value);
             } else if (c == ':') {
                 String name = s.substring(0, pos);
                 StringBuffer sb = new StringBuffer();
@@ -145,6 +170,33 @@ public class MultiLineProperties implements Map<String, String> {
 
     public String get(Object key) {
         return maps.get(key);
+    }
+
+    public void print(OutputStream out) throws IOException {
+        print(new OutputStreamWriter(out, Encoding.CHARSET_UTF8));
+    }
+
+    public void print(Writer writer) throws IOException {
+        String NL = System.getProperty("line.separator");
+        for (Map.Entry<String, String> en : entrySet()) {
+            writer.write(en.getKey());
+            String val = en.getValue();
+            if (val == null) {
+                writer.write("=");
+                continue;
+            }
+            if (val.contains("\n")) {
+                writer.write(":=");
+                writer.write(val);
+                writer.write(NL);
+                writer.write("#End " + en.getKey());
+            } else {
+                writer.write('=');
+                writer.write(val);
+            }
+            writer.write(NL);
+        }
+        writer.flush();
     }
 
 }

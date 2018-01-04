@@ -156,6 +156,8 @@ public class XmlIocLoader implements IocLoader {
         for (Element fieldElement : list) {
                 IocField iocField = new IocField();
                 iocField.setName(fieldElement.getAttribute("name"));
+                if ("true".equals(fieldElement.getAttribute("optional")))
+                	iocField.setOptional(true);
                 if (fieldElement.hasChildNodes()) {
                     NodeList nodeList = fieldElement.getChildNodes();
                     for (int j = 0; j < nodeList.getLength(); j++) {
@@ -189,6 +191,7 @@ public class XmlIocLoader implements IocLoader {
     protected static final String JNDI_TAG = IocValue.TYPE_JNDI;
     protected static final String SYS_TAG = IocValue.TYPE_SYS;
     protected static final String APP_TAG = IocValue.TYPE_APP;
+    protected static final String EL_TAG = IocValue.TYPE_EL;
 
     protected IocValue parseX(Element element) throws Throwable {
         IocValue iocValue = new IocValue();
@@ -201,6 +204,9 @@ public class XmlIocLoader implements IocLoader {
             iocValue.setValue(element.getTextContent());
         } else if (JNDI_TAG.equalsIgnoreCase(type)) {
             iocValue.setType(JNDI_TAG);
+            iocValue.setValue(element.getTextContent());
+        } else if (EL_TAG.equalsIgnoreCase(type)) {
+            iocValue.setType(EL_TAG);
             iocValue.setValue(element.getTextContent());
         } else if (JAVA_TAG.equalsIgnoreCase(type)) {
             iocValue.setType(JAVA_TAG);

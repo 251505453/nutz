@@ -1,9 +1,13 @@
 package org.nutz.lang.random;
 
+import java.awt.Color;
+import java.awt.Font;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.UUID;
 
+import org.nutz.img.Colors;
+import org.nutz.img.Fonts;
 import org.nutz.lang.Strings;
 
 /**
@@ -54,6 +58,7 @@ public abstract class R {
     }
 
     private static final char[] _UU64 = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz".toCharArray();
+    private static final char[] _UU32 = "0123456789abcdefghijklmnopqrstuv".toCharArray();
 
     /**
      * @return 64进制表示的紧凑格式的 UUID
@@ -122,6 +127,35 @@ public abstract class R {
         return UUID.fromString(UU(uu16));
     }
 
+    public static String UU32(UUID uu) {
+        StringBuilder sb = new StringBuilder();
+        long m = uu.getMostSignificantBits();
+        long l = uu.getLeastSignificantBits();
+        for (int i = 0; i < 13; i++) {
+            sb.append(_UU32[(int) (m >> ((13 - i - 1) * 5)) & 31]);
+        }
+        for (int i = 0; i < 13; i++) {
+            sb.append(_UU32[(int) (l >> ((13 - i - 1)) * 5) & 31]);
+        }
+        return sb.toString();
+    }
+
+    public static String UU32() {
+        return UU32(UUID.randomUUID());
+    }
+
+    public static UUID fromUU32(String u32) {
+        return new UUID(parseUnsignedLong(u32.substring(0, 13), 32),
+                        parseUnsignedLong(u32.substring(13), 32));
+    }
+
+    public static long parseUnsignedLong(String s, int radix) {
+        int len = s.length();
+        long first = Long.parseLong(s.substring(0, len - 1), radix);
+        int second = Character.digit(s.charAt(len - 1), radix);
+        return first * radix + second;
+    }
+
     /**
      * 将紧凑格式的 UU16 字符串变成标准 UUID 格式的字符串
      * 
@@ -148,9 +182,7 @@ public abstract class R {
      * 将一个 UU64 表示的紧凑字符串，变成 UU16 表示的字符串
      * 
      * <pre>
-     * 每次取2个字符，恢复成3个byte，重复10次，
-     * 最后一次，是用最后2个字符，恢复回2个byte 
-     * </prev>
+     * 每次取2个字符，恢复成3个byte，重复10次， 最后一次，是用最后2个字符，恢复回2个byte </prev>
      * 
      * @param uu64
      *            uu64 64进制表示的 UUID, 内容为 [\\-0-9a-zA-Z_]
@@ -202,6 +234,115 @@ public abstract class R {
      */
     public static String UU16(UUID uu) {
         return Strings.alignRight(Long.toHexString(uu.getMostSignificantBits()), 16, '0')
-                + Strings.alignRight(Long.toHexString(uu.getLeastSignificantBits()), 16, '0');
+               + Strings.alignRight(Long.toHexString(uu.getLeastSignificantBits()), 16, '0');
+    }
+
+    /**
+     * 返回指定长度由随机数字+小写字母组成的字符串
+     * 
+     * @param length
+     *            指定长度
+     * @return 随机字符串
+     */
+    public static String captchaChar(int length) {
+        return captchaChar(length, false);
+    }
+
+    /**
+     * 返回指定长度随机数字+字母(大小写敏感)组成的字符串
+     * 
+     * @param length
+     *            指定长度
+     * @param caseSensitivity
+     *            是否区分大小写
+     * @return 随机字符串
+     */
+    public static String captchaChar(int length, boolean caseSensitivity) {
+        StringBuilder sb = new StringBuilder();
+        Random rand = new Random();// 随机用以下三个随机生成器
+        Random randdata = new Random();
+        int data = 0;
+        for (int i = 0; i < length; i++) {
+            int index = rand.nextInt(caseSensitivity ? 3 : 2);
+            // 目的是随机选择生成数字，大小写字母
+            switch (index) {
+            case 0:
+                data = randdata.nextInt(10);// 仅仅会生成0~9, 0~9的ASCII为48~57
+                sb.append(data);
+                break;
+            case 1:
+                data = randdata.nextInt(26) + 97;// 保证只会产生ASCII为97~122(a-z)之间的整数,
+                sb.append((char) data);
+                break;
+            case 2: // caseSensitivity为true的时候, 才会有大写字母
+                data = randdata.nextInt(26) + 65;// 保证只会产生ASCII为65~90(A~Z)之间的整数
+                sb.append((char) data);
+                break;
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 返回指定长度随机数字组成的字符串
+     * 
+     * @param length
+     *            指定长度
+     * @return 随机字符串
+     */
+    public static String captchaNumber(int length) {
+        StringBuilder sb = new StringBuilder();
+        Random rand = new Random();
+        for (int i = 0; i < length; i++) {
+            sb.append(rand.nextInt(10));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 设置随机数生成器的实例, 例如 SecureRandom
+     * 
+     * @param r
+     *            随机生成器,不可以是null
+     */
+    public static void setR(Random r) {
+        if (r == null)
+            throw new NullPointerException("Random MUST NOT NULL");
+        R.r = r;
+    }
+
+    /**
+     * 获取一个随机颜色
+     * 
+     * @return 颜色
+     */
+    public static Color color() {
+        return Colors.randomColor();
+    }
+
+    /**
+     * 获取一个随机颜色，格式为“rgb(12, 25, 33)”
+     * 
+     * @return rgb格式字符串
+     */
+    public static String colorRGB() {
+        return Colors.toRGB(Colors.randomColor());
+    }
+
+    /**
+     * 获取一个随机字体，不能保证非英文字符产生乱码问题
+     * 
+     * @param style
+     *            字体样式 支持：Font.PLAIN Font.BOLD Font.ITALIC
+     * @param size
+     *            字体大小
+     * @return 字体
+     */
+    public static Font font(int style, int size) {
+        return Fonts.random(style, size);
+    }
+
+    public static Random get() {
+        return r;
     }
 }

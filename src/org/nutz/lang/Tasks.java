@@ -1,6 +1,7 @@
 package org.nutz.lang;
 
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Timer;
@@ -9,12 +10,12 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import org.nutz.lang.util.CronSequenceGenerator;
 import org.nutz.log.Log;
 import org.nutz.log.Logs;
 
 /**
  * 定时任务服务的友好封装
- *
  * @author QinerG(qinerg@gmail.com)
  */
 public abstract class Tasks {
@@ -22,11 +23,22 @@ public abstract class Tasks {
     private static Log logger = Logs.get();
 
     private static ScheduledThreadPoolExecutor taskScheduler = new ScheduledThreadPoolExecutor(getBestPoolSize());
+    private static List<Timer> timerList = new ArrayList<Timer>();
+    
+    /**
+     * 通过 cron 表达式来配置任务的启动时间
+     * @param task
+     * @param cronExpression
+     */
+    public static void scheduleAtCron(final Runnable task, String cronExpression) {
+        TimeSchedule timeSchedule = new TimeSchedule(task, cronExpression);
+        timeSchedule.start();
+    }
 
     /**
      * 立即启动，并以固定的频率来运行任务。后续任务的启动时间不受前次任务延时影响。
      * @param task 具体待执行的任务
-     * @param period 每次执行任务的间隔时间(单位秒)
+     * @param periodSeconds 每次执行任务的间隔时间(单位秒)
      */
     public static ScheduledFuture<?> scheduleAtFixedRate(Runnable task, long periodSeconds) {
         return scheduleAtFixedRate(task, 0, periodSeconds, TimeUnit.SECONDS);
@@ -39,8 +51,8 @@ public abstract class Tasks {
      * @param periodSeconds 每次执行任务的间隔时间(单位秒)
      * @param unit 时间单位
      */
-    public static ScheduledFuture<?> scheduleAtFixedRate(Runnable task, long initialDelay, long period, TimeUnit unit) {
-        return taskScheduler.scheduleAtFixedRate(task, initialDelay, period, unit);
+    public static ScheduledFuture<?> scheduleAtFixedRate(Runnable task, long initialDelay, long periodSeconds, TimeUnit unit) {
+        return taskScheduler.scheduleAtFixedRate(task, initialDelay, periodSeconds, unit);
     }
 
     /**
@@ -69,14 +81,16 @@ public abstract class Tasks {
             public void run() {
                 taskScheduler.scheduleAtFixedRate(task, 0, period, unit);
                 timer.cancel();
+                timerList.remove(timer);
             }
         }, startTime);
+        timerList.add(timer);
     }
 
     /**
      * 立即启动，两次任务间保持固定的时间间隔
      * @param task 具体待执行的任务
-     * @param period 两次任务的间隔时间(单位秒)
+     * @param periodSeconds 两次任务的间隔时间(单位秒)
      */
     public static ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, long periodSeconds) {
         return scheduleWithFixedDelay(task, 0, periodSeconds, TimeUnit.SECONDS);
@@ -119,13 +133,42 @@ public abstract class Tasks {
             public void run() {
                 taskScheduler.scheduleWithFixedDelay(task, 0, period, unit);
                 timer.cancel();
+                timerList.remove(timer);
             }
         }, startTime);
+        timerList.add(timer);
+    }
+    /**
+     * 在指定的时间点启动任务只运行一次
+     * @param task 具体待执行的任务
+     * @param startTime 运行的时间点
+     */
+    public static void scheduleAtFixedTime(final Runnable task, Date startTime) {
+        final Timer timer = new Timer();
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                taskScheduler.execute(task);
+                timer.cancel();
+                timerList.remove(timer);
+            }
+        }, startTime);
+        timerList.add(timer);
+    }
+    /**
+     * 在符合条件的时间点启动任务
+     * @see scheduleAtCron
+     * @param task 具体待执行的任务
+     * @param expression  cron表达式
+     */
+    @Deprecated
+    public static void scheduleAtFixedTime(final Runnable task, String cronExpression) {
+    	scheduleAtCron(task, cronExpression);
     }
 
     /**
      * 调整线程池大小
-     * @param threadPoolSize
+     * @param threadPoolSize 线程池大小
      */
     public static void resizeThreadPool(int threadPoolSize) {
         taskScheduler.setCorePoolSize(threadPoolSize);
@@ -133,7 +176,7 @@ public abstract class Tasks {
 
     /**
      * 返回定时任务线程池，可做更高级的应用
-     * @return
+     * @return 当前的线程池
      */
     public static ScheduledThreadPoolExecutor getTaskScheduler() {
         return taskScheduler;
@@ -144,8 +187,16 @@ public abstract class Tasks {
      * <p>系统关闭时可调用此方法终止正在执行的定时任务，一旦关闭后不允许再向线程池中添加任务，否则会报RejectedExecutionException异常</p>
      */
     public static void depose() {
+    	int timerNum = timerList.size();
+    	//清除Timer
+    	synchronized (timerList) {
+    		for (Timer t: timerList)
+    			t.cancel();
+    		timerList.clear();
+    	}
+    	
         List<Runnable> awaitingExecution = taskScheduler.shutdownNow();
-        logger.infof("Tasks stopping. Tasks awaiting execution: %d", awaitingExecution.size());
+        logger.infof("Tasks stopping. Tasks awaiting execution: %d", timerNum + awaitingExecution.size());
     }
 
     /**
@@ -172,5 +223,26 @@ public abstract class Tasks {
             // 异常发生时姑且返回10个任务线程池
             return 10;
         }
+    }
+}
+
+class TimeSchedule implements Runnable {
+    private final Runnable task;
+    private final CronSequenceGenerator cron;
+
+    public TimeSchedule(Runnable task, String expression) {
+        this.task = task;
+        this.cron =  new CronSequenceGenerator(expression);
+    }
+
+    public void start(){
+        Date startTime = cron.next(new Date());
+        Tasks.scheduleAtFixedTime(this,startTime);
+    }
+
+    @Override
+    public void run() {
+        task.run();
+        start();
     }
 }

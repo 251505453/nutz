@@ -10,43 +10,21 @@
 	Nutz.Dao 将如何如何使用这个条件
 		* Dao 接口的 clear 方法和 query 方法的第二个参数，就是为了生成 WHERE 后面那段字符串设计的
 		* 这个参数是一个 org.nutz.dao.Condition 接口的实现类
-		* 通过该接口的 toString(org.nutz.dao.entity.Entity) 方法， Nutz.Dao 将获得 WHERE 后面那段字符串
+		* 通过该接口的 toSql(org.nutz.dao.entity.Entity) 方法， Nutz.Dao 将获得 WHERE 后面那段字符串
 		* 当然也包括 ORDER BY
 ------------------------------------------------------------------------------------------------------------
 Condition 接口
-	* 这个接口只有一个方法 toString(Entity<?> entity)
+	* 这个接口只有一个方法` toSql(Entity<?> entity)`
 		* 这个方法带一个参数 org.nutz.dao.entity.Entity
 		* 通过这个参数，实现者可以获得当前需要操作的实体的配置信息
 		* 当然，如果你不需要的话，你可以不理睬这个参数
-	* Nutz.Dao 会将 toString(Entity<?> entity) 的返回直接拼接到SQL 的 WHERE 关键字后面
+	* Nutz.Dao 会将`toSql(Entity<?> entity)` 的返回直接拼接到SQL 的 WHERE 关键字后面
 		* 如果你返回的字符串以 WHERE 或者 ORDER BY 开头，它会直接使用，否则会补上一个 WHERE 关键字
 		* 这个判断会忽略前后空白以及大小写
 ------------------------------------------------------------------------------------------------------------
 Nutz 给你的快速实现
 	* 如果你的数据库字段被假设不会发生变化，用直接硬编码是个很好的选择
 	* 如果在开发期，你的数据库字段变化非常频繁，用 Cnd 工具类则是更好的选择
-
-	直接硬编码
-	
-		最简单直接的方法就是直接输出 WHERE 关键字后面的 SQL 代码了。比如查询一个 Person 对象
-		{{{<JAVA>
-		List<Person> crowd = dao.query(Person.class, Cnd.wrap("name LIKE 'J%' AND age>20"), null);
-		}}}
-
-		这句话，就会将所有名称以 J 开头，并且年龄超过20岁的人全部查询出来。参看 [hello.man Nutz.Dao 入门]
-		针对 Person 对象的描述，实际上，上面那句话执行的 SQL 代码为：
-		
-        {{{<SQL>
-		SELECT * FROM t_person WHERE name LIKE 'J%' AND age>20;
-		}}}
-		
-        当然你要是写
-		
-        {{{<JAVA>
-		Cnd.wrap("name LIKE 'J%' AND age>20 ORDER BY name ASC");
-		}}}
-		
-        就会按照 name 字段排序。
 
 	一个友好的工具类 -- Cnd
 	
@@ -73,6 +51,20 @@ Nutz 给你的快速实现
 		WHERE (name LIKE 'P%' AND age>'20') OR (name LIKE 'S%' AND age<'30') ORDER BY name ASC
 		}}}
 
+	直接硬编码(不推荐)
+	
+		最暴力的方法就是直接输出 WHERE 关键字后面的 SQL 代码了。比如查询一个 Person 对象
+		{{{<JAVA>
+		List<Person> crowd = dao.query(Person.class, Cnd.wrap("name LIKE 'J%' AND age>20"), null);
+		}}}
+		
+		部分暴力,使用Static
+		
+		{{{<JAVA>
+		// 筛选年龄(age)小于20,现金(cash字段)多于负债(due字段)的XX
+		List<Pet> list = dao.query(Girl.class, Cnd.where("age", "<", 20).and(new Static("cash > due")));
+		}}}
+
 ------------------------------------------------------------------------------------------------------------
 拼装更加复杂的条件
     
@@ -87,7 +79,7 @@ Nutz 给你的快速实现
     这个接口的使用也很简单，它基本符合 "IDE 的所见即所得" 接口设计原则。 就是说，如果你的 IDE 有智能提示的话，
     你使用这个接口是不需要文档的。
 
-    {{{
+    {{{<JAVA>
     // 创建一个 Criteria 接口实例
     Criteria cri = Cnd.cri();
 
@@ -115,7 +107,24 @@ Nutz 给你的快速实现
      * GTE : 大于等于 (GreatThanEqual)
      * LTE : 小于等于 (LessThanEqual)
 
+------------------------------------------------------------------------------------------
+模糊查询的小提示
 
+	如下代码,当str的长度大于1和等于1时的行为有差异
+	
+	{{{<JAVA>
+	Cnd cnd = Cnd.where("name", "like", str);
+	// 若str的长度为1,输出的SQL是
+	// where name like "%a%"
+	// 若str的长度为2,输出的SQL是
+	// where name like "ab"
+	}}}
+	
+	正确的写法是
+	
+	{{{<JAVA>
+	Cnd cnd = Cnd.where("name", "like", "%" + str + "%s");
+	}}}
 
 
 

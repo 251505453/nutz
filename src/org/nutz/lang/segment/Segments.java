@@ -1,9 +1,12 @@
 package org.nutz.lang.segment;
 
 import java.io.File;
+import java.util.Map;
 
 import org.nutz.lang.Files;
+import org.nutz.lang.Lang;
 import org.nutz.lang.util.Context;
+import org.nutz.lang.util.NutMap;
 
 /**
  * 代码片段的帮助函数
@@ -72,9 +75,18 @@ public class Segments {
      * @return 替换后的字符串
      */
     public static String replace(String pattern, Context context) {
+        if (null == pattern)
+            return null;
         if (null == context)
             return pattern;
         return replace(new CharSegment(pattern), context);
+    }
+
+    /**
+     * @see #replace(Segment, Context)
+     */
+    public static String replace(String pattern, Map<String, Object> context) {
+        return replace(pattern, Lang.context(new NutMap(context)));
     }
 
     /**

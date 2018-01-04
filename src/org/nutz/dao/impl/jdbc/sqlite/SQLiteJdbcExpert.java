@@ -9,16 +9,18 @@ import org.nutz.dao.entity.Entity;
 import org.nutz.dao.entity.MappingField;
 import org.nutz.dao.entity.PkType;
 import org.nutz.dao.impl.entity.macro.SqlFieldMacro;
-import org.nutz.dao.impl.jdbc.mysql.MysqlJdbcExpert;
+import org.nutz.dao.impl.jdbc.AbstractJdbcExpert;
 import org.nutz.dao.jdbc.JdbcExpertConfigFile;
+import org.nutz.dao.pager.Pager;
 import org.nutz.dao.sql.Pojo;
 import org.nutz.dao.sql.Sql;
+import org.nutz.dao.util.Pojos;
 
 /**
  * 
  * @author wendal
  */
-public class SQLiteJdbcExpert extends MysqlJdbcExpert {
+public class SQLiteJdbcExpert extends AbstractJdbcExpert {
 
     public SQLiteJdbcExpert(JdbcExpertConfigFile conf) {
         super(conf);
@@ -38,7 +40,9 @@ public class SQLiteJdbcExpert extends MysqlJdbcExpert {
         // 创建字段
         boolean mPks = en.getPks().size() > 1;
         for (MappingField mf : en.getMappingFields()) {
-            sb.append('\n').append(mf.getColumnName());
+            if (mf.isReadonly())
+                continue;
+            sb.append('\n').append(mf.getColumnNameInSql());
             // Sqlite的整数型主键,一般都是自增的,必须定义为(PRIMARY KEY
             // AUTOINCREMENT),但这样就无法定义多主键!!
             if (mf.isId() && en.getPkType() == PkType.ID) {
@@ -60,7 +64,7 @@ public class SQLiteJdbcExpert extends MysqlJdbcExpert {
                     sb.append(" PRIMARY KEY");
                 }
                 if (mf.hasDefaultValue())
-                    sb.append(" DEFAULT '").append(getDefaultValue(mf)).append('\'');
+                    addDefaultValue(sb, mf);
             }
             sb.append(',');
         }
@@ -70,19 +74,20 @@ public class SQLiteJdbcExpert extends MysqlJdbcExpert {
             sb.append('\n');
             sb.append("constraint pk_").append(en.getTableName()).append(" PRIMARY KEY (");
             for (MappingField pk : pks) {
-                sb.append(pk.getColumnName()).append(',');
+                sb.append(pk.getColumnNameInSql()).append(',');
             }
             sb.setCharAt(sb.length() - 1, ')');
             sb.append("\n ");
         }
-        // 创建索引
-        dao.execute(createIndexs(en).toArray(new Sql[0]));
 
         // 结束表字段设置
         sb.setCharAt(sb.length() - 1, ')');
 
         // 执行创建语句
         dao.execute(Sqls.create(sb.toString()));
+        
+        // 创建索引
+        dao.execute(createIndexs(en).toArray(new Sql[0]));
         // 创建关联表
         createRelation(dao, en);
 
@@ -94,5 +99,24 @@ public class SQLiteJdbcExpert extends MysqlJdbcExpert {
         Pojo autoInfo = new SqlFieldMacro(idField, autoSql);
         autoInfo.setEntity(en);
         return autoInfo;
+    }
+
+    public void formatQuery(Pojo pojo) {
+        Pager pager = pojo.getContext().getPager();
+        // 需要进行分页
+        if (null != pager && pager.getPageNumber() > 0)
+            pojo.append(Pojos.Items.wrapf(" LIMIT %d, %d",
+                                          pager.getOffset(),
+                                          pager.getPageSize()));
+    }
+
+    public void formatQuery(Sql sql) {
+        Pager pager = sql.getContext().getPager();
+        // 需要进行分页
+        if (null != pager && pager.getPageNumber() > 0)
+            sql.setSourceSql(sql.getSourceSql()
+                             + String.format(" LIMIT %d, %d",
+                                             pager.getOffset(),
+                                             pager.getPageSize()));
     }
 }

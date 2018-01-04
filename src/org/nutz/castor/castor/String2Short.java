@@ -1,5 +1,7 @@
 package org.nutz.castor.castor;
 
+import org.nutz.lang.Nums;
+
 public class String2Short extends String2Number<Short> {
 
     @Override
@@ -9,7 +11,8 @@ public class String2Short extends String2Number<Short> {
 
     @Override
     protected Short valueOf(String str) {
-        return Short.valueOf(str);
+        Nums.Radix ni = Nums.evalRadix(str);
+        return Short.valueOf(ni.val, ni.radix);
     }
 
 }

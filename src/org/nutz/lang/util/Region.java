@@ -21,7 +21,8 @@ import org.nutz.lang.Strings;
  * 左闭右开区间 : [T0, T1)
  * 左开右闭区间 : (T0, T1]
  * 全开放的区间 : (T0, T1)
- * 精确等于某值 : (T0) 或 [T0)    # 总之开闭区间无所谓了
+ * 精确等于某值 : (T0] 或 [T0) 或 [T0]
+ * 精确不等于某值 : (T0)
  * </pre>
  * 
  * 比如对于数字:
@@ -30,6 +31,8 @@ import org.nutz.lang.Strings;
  * [4,10]   // >=4 && <=10
  * (6,54]   // >=6 && <54
  * (,78)    // <78
+ * [50]     // == 50
+ * (99)     // !=99
  * </pre>
  * 
  * 对于日期
@@ -46,20 +49,48 @@ public abstract class Region<T extends Comparable<T>> {
         return new IntRegion(str);
     }
 
+    public static IntRegion Intf(String fmt, Object... args) {
+        return new IntRegion(String.format(fmt, args));
+    }
+
     public static LongRegion Long(String str) {
         return new LongRegion(str);
+    }
+
+    public static LongRegion Longf(String fmt, Object... args) {
+        return new LongRegion(String.format(fmt, args));
     }
 
     public static FloatRegion Float(String str) {
         return new FloatRegion(str);
     }
 
+    public static FloatRegion Floatf(String fmt, Object... args) {
+        return new FloatRegion(String.format(fmt, args));
+    }
+
     public static DoubleRegion Double(String str) {
         return new DoubleRegion(str);
     }
 
+    public static DoubleRegion Doublef(String fmt, Object... args) {
+        return new DoubleRegion(String.format(fmt, args));
+    }
+
     public static DateRegion Date(String str) {
         return new DateRegion(str);
+    }
+
+    public static DateRegion Datef(String fmt, Object... args) {
+        return new DateRegion(String.format(fmt, args));
+    }
+
+    public static TimeRegion Time(String str) {
+        return new TimeRegion(str);
+    }
+
+    public static TimeRegion Timef(String fmt, Object... args) {
+        return new TimeRegion(String.format(fmt, args));
     }
 
     protected Class<T> eleType;
@@ -76,8 +107,28 @@ public abstract class Region<T extends Comparable<T>> {
         return left;
     }
 
+    public Region<T> left(T left) {
+        this.left = left;
+        return this;
+    }
+
+    public Region<T> leftOpen(boolean open) {
+        this.leftOpen = open;
+        return this;
+    }
+
     public T right() {
         return right;
+    }
+
+    public Region<T> right(T right) {
+        this.right = right;
+        return this;
+    }
+
+    public Region<T> rightOpen(boolean open) {
+        this.rightOpen = open;
+        return this;
     }
 
     public boolean isLeftOpen() {
@@ -141,6 +192,10 @@ public abstract class Region<T extends Comparable<T>> {
         if (null == obj)
             return false;
         if (!isRegion()) {
+            // 左右都是开区间，表示不等于
+            if (this.leftOpen && this.rightOpen) {
+                return left.compareTo(obj) != 0;
+            }
             return left.compareTo(obj) == 0;
         }
         if (null != left) {
@@ -171,27 +226,45 @@ public abstract class Region<T extends Comparable<T>> {
      * @return 自身
      */
     public Region<T> valueOf(String str) {
-        String[] ss = str.substring(1, str.length() - 1).split(",");
-        if (ss.length == 1) {
-            left = fromString(ss[0]);
-            right = left;
-        } else {
-            leftOpen = str.charAt(0) == '(';
-            rightOpen = str.charAt(str.length() - 1) == ')';
-            left = fromString(ss[0]);
-            right = fromString(ss[1]);
-            // 看看是否需要交换交换...
-            if (left.compareTo(right) > 0) {
-                T o = right;
+        String s2 = Strings.trim(str.substring(1, str.length() - 1));
+        leftOpen = str.charAt(0) == '(';
+        rightOpen = str.charAt(str.length() - 1) == ')';
+
+        // 只有左值
+        if (s2.endsWith(",")) {
+            left = fromString(Strings.trim(s2.substring(0, s2.length() - 1)));
+            right = null;
+        }
+        // 只有右值
+        else if (s2.startsWith(",")) {
+            left = null;
+            right = fromString(Strings.trim(s2.substring(1)));
+        }
+        // 两侧都有值
+        else {
+            String[] ss = Strings.splitIgnoreBlank(s2, ",");
+            // 精确的值
+            if (1 == ss.length) {
+                left = fromString(ss[0]);
                 right = left;
-                left = o;
+            }
+            // 一个区间
+            else {
+                left = fromString(ss[0]);
+                right = fromString(ss[1]);
+                // 看看是否需要交换交换...
+                if (null != left && null != right && left.compareTo(right) > 0) {
+                    T o = right;
+                    right = left;
+                    left = o;
+                }
             }
         }
         return this;
     }
 
     public String toString(T obj) {
-        return obj.toString();
+        return null == obj ? "" : obj.toString();
     }
 
     public T fromString(String str) {
@@ -209,10 +282,7 @@ public abstract class Region<T extends Comparable<T>> {
                                  toString(right),
                                  rightOpen ? ')' : ']');
 
-        return String.format("%c%s%c",
-                             leftOpen ? '(' : '[',
-                             toString(left),
-                             rightOpen ? ')' : ']');
+        return String.format("%c%s%c", leftOpen ? '(' : '[', toString(left), rightOpen ? ')' : ']');
     }
 
 }

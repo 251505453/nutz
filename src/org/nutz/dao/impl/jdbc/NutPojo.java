@@ -4,6 +4,7 @@ import java.lang.reflect.Array;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -24,7 +25,12 @@ import org.nutz.lang.Lang;
 
 public class NutPojo extends NutStatement implements Pojo {
 
-    private PojoCallback before;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = -8499040181844973777L;
+
+	private PojoCallback before;
 
     private PojoCallback after;
 
@@ -100,12 +106,12 @@ public class NutPojo extends NutStatement implements Pojo {
 
     public void onBefore(Connection conn) throws SQLException {
         if (null != before)
-            before.invoke(conn, null, this);
+            before.invoke(conn, null, this, null);
     }
 
-    public void onAfter(Connection conn, ResultSet rs) throws SQLException {
+    public void onAfter(Connection conn, ResultSet rs, Statement stmt) throws SQLException {
         if (null != after)
-            getContext().setResult(after.invoke(conn, rs, this));
+            getContext().setResult(after.invoke(conn, rs, this, stmt));
     }
 
     public Pojo setBefore(PojoCallback before) {

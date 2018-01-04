@@ -430,4 +430,13 @@ public class SimpleNode<T> implements Node<T> {
         return new InnerIterator<T>(this);
     }
 
+    @Override
+    public String toString(int level) {
+        return toString();
+    }
+    
+    @Override
+    public void toXml(StringBuilder sb, int level) {
+        sb.append(toString(level));
+    }
 }

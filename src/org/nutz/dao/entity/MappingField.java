@@ -1,9 +1,9 @@
 package org.nutz.dao.entity;
 
-import java.sql.ResultSet;
-
 import org.nutz.dao.entity.annotation.ColType;
 import org.nutz.dao.jdbc.ValueAdaptor;
+
+import java.sql.ResultSet;
 
 /**
  * 这个接口描述了一个数据库字段与Java字段的映射关系
@@ -19,8 +19,9 @@ public interface MappingField extends EntityField {
 	 *            被注入对象
 	 * @param rec
 	 *            结果集
+	 * @param prefix TODO
 	 */
-	void injectValue(Object obj, Record rec);
+	void injectValue(Object obj, Record rec, String prefix);
 
 	/**
 	 * 通过 resultSet 为映射字段注入值
@@ -29,8 +30,9 @@ public interface MappingField extends EntityField {
 	 *            被注入对象
 	 * @param rs
 	 *            结果集
+	 * @param prefix TODO
 	 */
-	void injectValue(Object obj, ResultSet rs);
+	void injectValue(Object obj, ResultSet rs, String prefix);
 
 	/**
 	 * @return 字段值适配器
@@ -49,6 +51,8 @@ public interface MappingField extends EntityField {
 	 * @return 数据库中的字段名
 	 */
 	String getColumnName();
+	
+	String getColumnNameInSql();
 
 	/**
 	 * @return 数据库中字段的注释
@@ -170,5 +174,11 @@ public interface MappingField extends EntityField {
 	 * @return 当前字段是否参与更新操作
 	 */
 	boolean isUpdate();
+
+
+	/**
+	 * @return 当前字段是否version字段
+	 */
+	boolean isVersion();
 
 }

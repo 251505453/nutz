@@ -7,6 +7,7 @@ import static org.nutz.ioc.json.Utils.J;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -22,7 +23,12 @@ import org.nutz.ioc.json.pojo.IocSelf;
 import org.nutz.ioc.json.pojo.IocTO00;
 import org.nutz.ioc.loader.json.JsonLoader;
 import org.nutz.ioc.loader.map.MapLoader;
+import org.nutz.json.Json;
+import org.nutz.json.JsonFormat;
 import org.nutz.lang.Streams;
+import org.nutz.lang.util.NutMap;
+import org.nutz.resource.NutResource;
+import org.nutz.resource.Scans;
 
 public class SimpleJsonIocTest {
 
@@ -48,6 +54,7 @@ public class SimpleJsonIocTest {
         assertEquals("b", obj.getStrss()[0][1]);
         assertEquals("c", obj.getStrss()[1][0]);
         assertEquals("d", obj.getStrss()[1][1]);
+    	ioc.depose();
     }
 
     @Test
@@ -75,6 +82,7 @@ public class SimpleJsonIocTest {
         IocLoader loader = new JsonLoader("org/nutz/ioc/json/empty.js");
         Ioc ioc = new NutIoc(loader);
         assertEquals(0, ioc.getNames().length);
+    	ioc.depose();
     }
 
     @Test
@@ -240,5 +248,63 @@ public class SimpleJsonIocTest {
     public void test_get_ioc_self() {
         Ioc ioc = I(J("iocV", "type:'org.nutz.ioc.json.pojo.IocSelf',fields:{ioc:{refer : '$iOc'}}"));
         assertEquals(ioc, ioc.get(IocSelf.class, "iocV").getIoc());
+    }
+    
+    @Test
+    public void test_env_list() {
+        Animal f = A("name:{env:['java.tmp.file', '/wendal']},misc:[{env:['!PATH', '/' , 'os.name', '/zozoh']}]");
+        assertTrue(f.getName().length() > 0);
+        assertTrue(f.getName().contains("/wendal"));
+        assertTrue(f.getMisc().get(0).toString().endsWith("/zozoh"));
+        System.out.println(f.getName());
+        System.out.println(f.getMisc().get(0));
+        
+        f = A("name:{env:['!JAVA_HOME:/opt/jdk6', '/bin/java']}");
+        assertTrue(f.getName().contains("/bin/java"));
+        assertTrue(f.getName().length() > "/bin/java".length());
+        
+        f = A("name:{env:['!ERR_JAVA_HOME:/opt/jdk6', '/bin/java']}");
+        assertTrue(f.getName().contains("/bin/java"));
+        assertTrue(f.getName().length() > "/bin/java".length());
+        assertEquals("/opt/jdk6/bin/java", f.getName());
+    }
+    
+    @Test
+    public void test_sys_list() {
+        Animal f = A("name:{sys:['/tmp/','PATH', '/wendal']},misc:[{sys:['PATH', '/' , 'os.name', '/zozoh']}]");
+        assertTrue(f.getName().length() > 0);
+        assertTrue(f.getName().contains("/wendal"));
+        assertTrue(f.getName().contains("/tmp"));
+        assertTrue(f.getMisc().get(0).toString().endsWith("/zozoh"));
+    }
+    
+    @Test
+    public void test_json_format_itself() {
+        Json.toJson(JsonFormat.full());
+    }
+    
+    @Test
+    public void test_java_neg() {
+        Animal f = A("name:{java:'org.nutz.ioc.json.pojo.JavaValueTest.abc(\"/tmp/\", -1)'}");
+        assertTrue(f.getName().length() > 0);
+        System.out.println(f.getName());
+        assertTrue(f.getName().equals("/tmp/,-1"));
+    }
+    
+    @Test
+    public void test_nan() {
+        NutMap map = new NutMap();
+        map.put("key", Double.NaN);
+        assertEquals("{\"key\":null}", Json.toJson(map, JsonFormat.tidy()));
+    }
+    
+    @Test
+    public void test_factory_by_factory() {
+        List<NutResource> res = Scans.me().scan("org/nutz/ioc/json/issue1304/");
+        System.out.println(res.get(0).getClass());
+        JsonLoader loader = new JsonLoader("org/nutz/ioc/json/issue1304/");
+        Ioc ioc = new NutIoc(loader);
+        ioc.get(null, "c");
+        ioc.depose();
     }
 }

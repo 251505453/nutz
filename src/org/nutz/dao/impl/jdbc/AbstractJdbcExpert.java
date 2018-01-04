@@ -1,17 +1,19 @@
 package org.nutz.dao.impl.jdbc;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.nutz.dao.Dao;
 import org.nutz.dao.DaoException;
 import org.nutz.dao.Sqls;
-import org.nutz.dao.TableName;
 import org.nutz.dao.entity.Entity;
 import org.nutz.dao.entity.EntityField;
 import org.nutz.dao.entity.EntityIndex;
@@ -40,7 +42,7 @@ import org.nutz.log.Logs;
 
 /**
  * 对于所有数据库的抽象实现
- * 
+ *
  * @author zozoh(zozohtnt@gmail.com)
  */
 public abstract class AbstractJdbcExpert implements JdbcExpert {
@@ -50,6 +52,8 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
     private static String DEFAULT_COMMENT_TABLE = "comment on table $table is '$tableComment'";
 
     private static String DEFAULT_COMMENT_COLUMN = "comment on column $table.$column is '$columnComment'";
+
+    protected Set<String> keywords;
 
     /**
      * 提供给子类使用的配置文件对象
@@ -66,6 +70,14 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
     // 下面为子类默认实现几个接口函数
 
     public void setupEntityField(Connection conn, Entity<?> en) {
+        List<MappingField> mfs = new ArrayList<MappingField>();
+        for (MappingField mf : en.getMappingFields()) {
+            if (mf.getTypeMirror().isEnum()) {
+                mfs.add(mf);
+            }
+        }
+        if (mfs.isEmpty())
+            return;
         Statement stat = null;
         ResultSet rs = null;
         ResultSetMetaData rsmd = null;
@@ -75,31 +87,34 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
             rs = stat.executeQuery(createResultSetMetaSql(en));
             rsmd = rs.getMetaData();
             // 循环字段检查
-            for (MappingField mf : en.getMappingFields()) {
+            List<String> columnNames = new ArrayList<String>();
+            List<String> columnLabels = new ArrayList<String>();
+            int columnCount = rsmd.getColumnCount();
+            for (int i = 1; i <= columnCount; i++) {
+                columnNames.add(rsmd.getColumnName(i));
+                columnLabels.add(rsmd.getColumnLabel(i));
+            }
+            for (MappingField mf : mfs) {
                 try {
-					int ci = Daos.getColumnIndex(rsmd, mf.getColumnName());
-					// 是否只读，如果人家已经是指明是只读了，那么就不要自作聪明得再从数据库里验证了
-					// if (!mf.isReadonly() && rsmd.isReadOnly(ci))
-					// mf.setAsReadonly();
-					// 是否非空
-					if (ResultSetMetaData.columnNoNulls == rsmd.isNullable(ci))
-					    mf.setAsNotNull();
-					// 枚举类型在数据库中的值
-					if (mf.getTypeMirror().isEnum()) {
-					    if (Daos.isIntLikeColumn(rsmd, ci)) {
-					        mf.setColumnType(ColType.INT);
-					    } else {
-					        mf.setColumnType(ColType.VARCHAR);
-					    }
-					}
-				} catch (Exception e) {
-					// TODO 需要log一下不?
-				}
+                    int ci = columnNames.indexOf(mf.getColumnName()) + 1;
+                    if (ci == 0) {
+                        log.debugf("Can not find @Column(%s) in table/view (%s), skip checking", mf.getColumnName(), rsmd.getTableName(1));
+                        continue;
+                    }
+                    // 枚举类型在数据库中的值
+                    if (Daos.isIntLikeColumn(rsmd, ci)) {
+                        mf.setColumnType(ColType.INT);
+                    } else {
+                        mf.setColumnType(ColType.VARCHAR);
+                    }
+                }
+                catch (Exception e) {
+                }
             }
         }
         catch (Exception e) {
             if (log.isDebugEnabled())
-                log.debugf("Table '%s' doesn't exist!", en.getViewName());
+                log.debugf("Table '%s' doesn't exist! class=%s", en.getViewName(), en.getType().getName());
         }
         // Close ResultSet and Statement
         finally {
@@ -126,12 +141,10 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
 
         try {
             dropRelation(dao, en);
-            if (tableName.equals(viewName)) {
-                dao.execute(Sqls.create("DROP TABLE " + tableName));
-            } else {
-                dao.execute(Sqls.create("DROP VIEW " + viewName),
-                            Sqls.create("DROP TABLE " + tableName));
+            if (!tableName.equals(viewName) && dao.exists(viewName)) {
+                dao.execute(Sqls.create("DROP VIEW " + viewName));
             }
+            dao.execute(Sqls.create("DROP TABLE " + tableName));
         }
         catch (Exception e) {
             return false;
@@ -150,22 +163,28 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
         return "SELECT * FROM " + en.getViewName() + " where 1!=1";
     }
 
-    protected void createRelation(Dao dao, Entity<?> en) {
+    public void createRelation(Dao dao, Entity<?> en) {
         final List<Sql> sqls = new ArrayList<Sql>(5);
         for (LinkField lf : en.visitManyMany(null, null, null)) {
-            ManyManyLinkField mm = (ManyManyLinkField) lf;
-            if (dao.exists(mm.getRelationName()))
-                continue;
-            String sql = "CREATE TABLE " + mm.getRelationName() + "(";
-            sql += mm.getFromColumnName() + " " + evalFieldType(mm.getHostField()) + ",";
-            sql += mm.getToColumnName() + " " + evalFieldType(mm.getLinkedField());
-            sql += ")";
-            sqls.add(Sqls.create(sql));
+            Sql sql = createRelation(dao, lf);
+            if (sql != null)
+                sqls.add(sql);
         }
         dao.execute(sqls.toArray(new Sql[sqls.size()]));
     }
 
-    protected void dropRelation(Dao dao, Entity<?> en) {
+    protected Sql createRelation(Dao dao, LinkField lf) {
+        ManyManyLinkField mm = (ManyManyLinkField) lf;
+        if (dao.exists(mm.getRelationName()))
+            return null;
+        String sql = "CREATE TABLE " + mm.getRelationName() + "(" + "\n";
+        sql += mm.getFromColumnName() + " " + evalFieldType(mm.getHostField()) + "," + "\n";
+        sql += mm.getToColumnName() + " " + evalFieldType(mm.getLinkedField()) + "\n";
+        sql += ")";
+        return Sqls.create(sql);
+    }
+
+    public void dropRelation(Dao dao, Entity<?> en) {
         final List<Sql> sqls = new ArrayList<Sql>(5);
         for (LinkField lf : en.visitManyMany(null, null, null)) {
             ManyManyLinkField mm = (ManyManyLinkField) lf;
@@ -176,7 +195,7 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
         dao.execute(sqls.toArray(new Sql[sqls.size()]));
     }
 
-    protected String evalFieldType(MappingField mf) {
+    public String evalFieldType(MappingField mf) {
         if (mf.getCustomDbType() != null)
             return mf.getCustomDbType();
         switch (mf.getColumnType()) {
@@ -222,11 +241,19 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
             if (mf.getTypeMirror().isDouble())
                 return "NUMERIC(15,10)";
             return "FLOAT";
+
+        case PSQL_ARRAY:
+            return "ARRAY";
+
+        case PSQL_JSON:
+        case MYSQL_JSON:
+            return "JSON";
+        default:
+            throw Lang.makeThrow("Unsupport colType '%s' of field '%s' in '%s' ",
+                             mf.getColumnType(),
+                             mf.getName(),
+                             mf.getEntity().getType().getName());
         }
-        throw Lang.makeThrow(    "Unsupport colType '%s' of field '%s' in '%s' ",
-                                mf.getColumnType(),
-                                mf.getName(),
-                                mf.getEntity().getType().getName());
     }
 
     protected static List<DaoStatement> wrap(String... sqls) {
@@ -257,34 +284,33 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
 
     protected List<Sql> createIndexs(Entity<?> en) {
         List<Sql> sqls = new ArrayList<Sql>();
-        StringBuilder sb = new StringBuilder();
-        List<EntityIndex> indexs = en.getIndexes();
-        for (EntityIndex index : indexs) {
-            sb.setLength(0);
-            if (index.isUnique())
-                sb.append("Create UNIQUE Index ");
-            else
-                sb.append("Create Index ");
-            if (index.getName().contains("$"))
-            	sb.append(TableName.render(new CharSegment(index.getName())));
-            else
-            	sb.append(index.getName());
-            sb.append(" ON ").append(en.getTableName()).append("(");
-            for (EntityField field : index.getFields()) {
-                if (field instanceof MappingField) {
-                    MappingField mf = (MappingField) field;
-                    sb.append(mf.getColumnName()).append(',');
-                } else {
-                    throw Lang.makeThrow(    DaoException.class,
-                                            "%s %s is NOT a mapping field, can't use as index field!!",
-                                            en.getClass(),
-                                            field.getName());
-                }
-            }
-            sb.setCharAt(sb.length() - 1, ')');
-            sqls.add(Sqls.create(sb.toString()));
+        for (EntityIndex index : en.getIndexes()) {
+            sqls.add(createIndexSql(en, index));
         }
         return sqls;
+    }
+
+    public Sql createIndexSql(Entity<?> en, EntityIndex index) {
+        StringBuilder sb = new StringBuilder();
+        if (index.isUnique())
+            sb.append("Create UNIQUE Index ");
+        else
+            sb.append("Create Index ");
+        sb.append(index.getName(en));
+        sb.append(" ON ").append(en.getTableName()).append("(");
+        for (EntityField field : index.getFields()) {
+            if (field instanceof MappingField) {
+                MappingField mf = (MappingField) field;
+                sb.append(mf.getColumnNameInSql()).append(',');
+            } else {
+                throw Lang.makeThrow(DaoException.class,
+                                     "%s %s is NOT a mapping field, can't use as index field!!",
+                                     en.getClass(),
+                                     field.getName());
+            }
+        }
+        sb.setCharAt(sb.length() - 1, ')');
+        return Sqls.create(sb.toString());
     }
 
     public void addComment(Dao dao, Entity<?> en) {
@@ -298,19 +324,18 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
         List<Sql> sqls = new ArrayList<Sql>();
         // 表注释
         if (en.hasTableComment()) {
-            Sql tableCommentSQL = Sqls.create(Strings.isBlank(commentTable)    ? DEFAULT_COMMENT_TABLE
+            Sql tableCommentSQL = Sqls.create(Strings.isBlank(commentTable) ? DEFAULT_COMMENT_TABLE
                                                                             : commentTable);
-            tableCommentSQL.vars()
-                            .set("table", en.getTableName())
-                            .set("tableComment", en.getTableComment());
+            tableCommentSQL.vars().set("table", en.getTableName()).set("tableComment",
+                                                                       en.getTableComment());
             sqls.add(tableCommentSQL);
         }
         // 字段注释
         if (en.hasColumnComment()) {
             for (MappingField mf : en.getMappingFields()) {
-                if (mf.hasColumnComment()) {
-                    Sql columnCommentSQL = Sqls.create(Strings.isBlank(commentColumn)    ? DEFAULT_COMMENT_COLUMN
-                                                                                        : commentColumn);
+                if (mf.hasColumnComment() && !mf.isReadonly()) {
+                    Sql columnCommentSQL = Sqls.create(Strings.isBlank(commentColumn) ? DEFAULT_COMMENT_COLUMN
+                                                                                      : commentColumn);
                     columnCommentSQL.vars()
                                     .set("table", en.getTableName())
                                     .set("column", mf.getColumnName())
@@ -322,7 +347,7 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
         // 执行创建语句
         dao.execute(sqls.toArray(new Sql[sqls.size()]));
     }
-    
+
     public void formatQuery(DaoStatement daoStatement) {
         if (daoStatement == null)
             return;
@@ -330,19 +355,19 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
         if (ctx == null || ctx.getPager() == null)
             return;
         if (daoStatement instanceof Pojo)
-            formatQuery((Pojo)daoStatement);
+            formatQuery((Pojo) daoStatement);
         else if (daoStatement instanceof Sql)
-            formatQuery((Sql)daoStatement);
-        else 
+            formatQuery((Sql) daoStatement);
+        else
             throw Lang.noImplement();
     }
 
     public abstract void formatQuery(Pojo pojo);
-    
+
     public void formatQuery(Sql sql) {
         throw Lang.noImplement();
     }
-    
+
     public Pojo fetchPojoId(Entity<?> en, MappingField idField) {
         String autoSql = "SELECT MAX($field) AS $field FROM $view";
         Pojo autoInfo = new SqlFieldMacro(idField, autoSql);
@@ -353,17 +378,107 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
     public boolean isSupportAutoIncrement() {
         return true;
     }
-    
+
     public String makePksName(Entity<?> en) {
-    	String name = en.getType().getAnnotation(PK.class).name();
-    	if (Strings.isBlank(name)) {
-    		StringBuilder sb = new StringBuilder();
-    		for (MappingField mf : en.getPks()) {
+        String name = en.getType().getAnnotation(PK.class).name();
+        if (Strings.isBlank(name)) {
+            StringBuilder sb = new StringBuilder();
+            for (MappingField mf : en.getPks()) {
                 sb.append("_").append(mf.getColumnName());
             }
-    		sb.setLength(sb.length() - 1);
-    		return sb.toString();
-    	}
-    	return name;
+            sb.setLength(sb.length() - 1);
+            return sb.toString();
+        }
+        return name;
+    }
+
+    public void addDefaultValue(StringBuilder sb, MappingField mf) {
+        if (!mf.hasDefaultValue())
+            return;
+        String dft = getDefaultValue(mf);
+        if (mf.getColumnType() == ColType.VARCHAR
+                || mf.getTypeMirror().isStringLike())
+            sb.append(" DEFAULT '").append(dft).append('\'');
+        else
+            sb.append(" DEFAULT ").append(dft);
+    }
+
+    public boolean addColumnNeedColumn() {
+        return true;
+    }
+
+    public boolean supportTimestampDefault() {
+        return true;
+    }
+
+    public void setKeywords(Set<String> keywords) {
+        this.keywords = keywords;
+    }
+
+    public Set<String> getKeywords() {
+        return keywords;
+    }
+
+    public String wrapKeywork(String columnName, boolean force) {
+        if (force || keywords.contains(columnName.toUpperCase()))
+            return "`" + columnName + "`";
+        return null;
+    }
+
+    public boolean isSupportGeneratedKeys() {
+        return true;
+    }
+
+    public void checkDataSource(Connection conn) throws SQLException {}
+
+    @Override
+    public Sql createAddColumnSql(Entity<?> en, MappingField mf) {
+        StringBuilder sb = new StringBuilder("ALTER TABLE ");
+        sb.append(en.getTableName()).append(" ADD ");
+        if (addColumnNeedColumn())
+            sb.append("COLUMN ");
+        sb.append(mf.getColumnNameInSql()).append(" ").append(evalFieldType(mf));
+        if (mf.isUnsigned()) {
+            sb.append(" UNSIGNED");
+        }
+        if (mf.isNotNull()) {
+            sb.append(" NOT NULL");
+        }
+        if (mf.getColumnType() == ColType.TIMESTAMP && supportTimestampDefault()) {
+            if (mf.hasDefaultValue()) {
+                sb.append(" ").append(mf.getDefaultValue(null).replaceAll("@", "@@"));
+            } else {
+                if (mf.isNotNull()) {
+                    sb.append(" DEFAULT 0");
+                } else {
+                    sb.append(" NULL DEFAULT NULL");
+                }
+            }
+        } else {
+            if (mf.hasDefaultValue())
+                addDefaultValue(sb, mf);
+        }
+        if (mf.hasColumnComment() && canCommentWhenAddIndex()) {
+            sb.append(" COMMENT '").append(mf.getColumnComment()).append("'");
+        }
+        // sb.append(';');
+        return Sqls.create(sb.toString());
+    }
+
+    public boolean canCommentWhenAddIndex() {
+        return false;
+    }
+
+    @Override
+    public List<String> getIndexNames(Entity<?> en, Connection conn) throws SQLException {
+        List<String> names = new ArrayList<String>();
+        String showIndexs = "show index from " + en.getTableName();
+        PreparedStatement ppstat = conn.prepareStatement(showIndexs);
+        ResultSet rest = ppstat.executeQuery();
+        while (rest.next()) {
+            String index = rest.getString(3);
+            names.add(index);
+        }
+        return names;
     }
 }

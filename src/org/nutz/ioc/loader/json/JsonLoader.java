@@ -18,7 +18,6 @@ import org.nutz.resource.Scans;
 /**
  * 从 Json 文件中读取配置信息。 支持 Merge with parent ，利用 MapLoader
  * <p>
- * 注，如果 JSON 配置文件被打入 Jar 包中，这个加载器将不能正常工作
  * 
  * @author zozoh(zozohtnt@gmail.com)
  * @author wendal(wendal1985@gmail.com)
@@ -27,6 +26,13 @@ import org.nutz.resource.Scans;
 public class JsonLoader extends MapLoader {
     
     private static final Log log = Logs.get();
+    
+    protected String[] paths;
+    
+    /**
+     * 供子类继承用.
+     */
+    protected JsonLoader(){}
 
     public JsonLoader(Reader reader) {
         loadFromReader(reader);
@@ -38,21 +44,34 @@ public class JsonLoader extends MapLoader {
         this.setMap(new HashMap<String, Map<String, Object>>());
         List<NutResource> list = Scans.me().loadResource("^(.+[.])(js|json)$", paths);
         try {
-            for (NutResource nr : list)
+            for (NutResource nr : list) {
+                if (log.isDebugEnabled())
+                    log.debugf("loading [%s]", nr.getName());
                 loadFromReader(nr.getReader());
+            }
         }
         catch (IOException e) {
             throw Lang.wrapThrow(e);
         }
         if(log.isDebugEnabled())
             log.debugf("Loaded %d bean define from path=%s --> %s", getMap().size(), Arrays.toString(paths), getMap().keySet());
+        this.paths = paths;
     }
 
-    private void loadFromReader(Reader reader) {
+    protected void loadFromReader(Reader reader) {
         String s = Lang.readAll(reader);
         Map<String, Map<String, Object>> map = (Map<String, Map<String, Object>>) Json.fromJson(s);
         if (null != map && map.size() > 0)
             getMap().putAll(map);
     }
 
+    public String toString() {
+    	if (paths == null)
+    		return super.toString();
+    	return "/*" + getClass().getSimpleName() + Arrays.toString(paths) + "*/\n" + Json.toJson(map);
+    }
+    
+    public String[] getPaths() {
+        return paths;
+    }
 }

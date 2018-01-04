@@ -105,8 +105,7 @@ public class SqlTemplate {
                            Map<String, Object> vars,
                            List<Map<String, Object>> batchValues) {
         Sql sqlObj = null;
-        boolean hasBatchValues = batchValues != null && batchValues.size() > 0;
-        if (hasBatchValues) {
+        if (batchValues != null && batchValues.size() > 0) {
             sqlObj = createSqlObj(sql, batchValues.get(0));
             for (Map<String, Object> params : batchValues) {
                 Map<String, Object> newParams = paramProcess(params);
@@ -335,6 +334,24 @@ public class SqlTemplate {
      * 
      * @param sql
      *            包含变量占位符的SQL
+     * @param params
+     *            参数map，无参数时，可为null
+     * @param classOfT
+     *            对象类类
+     * 
+     * @return 对象列表，无查询结果时返回长度为0的List对象
+     */
+    public <T> List<T> query(String sql,
+                             Map<String, Object> params,
+                             Class<T> classOfT) {
+        return query(sql, null, params, dao.getEntity(classOfT));
+    }
+
+    /**
+     * 执行一个SQL查询操作，结果为一组对象。
+     * 
+     * @param sql
+     *            包含变量占位符的SQL
      * @param vars
      *            变量map，无参数时，可为null
      * @param params
@@ -523,7 +540,7 @@ public class SqlTemplate {
         return newParams;
     }
 
-    private String inSqlProcess(String paramName, Object paramObj) {
+    private static String inSqlProcess(String paramName, Object paramObj) {
         int len = Array.getLength(paramObj);
         StringBuilder inSqlExp = new StringBuilder();
         for (int i = 0; i < len; i++) {
@@ -534,7 +551,7 @@ public class SqlTemplate {
         return inSqlExp.toString();
     }
 
-    private void inParamProcess(String paramName, Object paramObj, Map<String, Object> newParams) {
+    private static void inParamProcess(String paramName, Object paramObj, Map<String, Object> newParams) {
         int len = Array.getLength(paramObj);
         for (int i = 0; i < len; i++) {
             String inParamName = paramName + i;

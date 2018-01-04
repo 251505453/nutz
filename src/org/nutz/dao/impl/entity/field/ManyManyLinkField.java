@@ -20,10 +20,26 @@ public class ManyManyLinkField extends AbstractLinkField {
     private String fromColumnName;
 
     private String toColumnName;
+    
+    public ManyManyLinkField(Entity<?> host, EntityHolder holder, LinkInfo info, Class<?> klass, String from, String to, String relation, String key) {
+    	super(host, holder, info);
+    	this.targetType = klass;
+        this.mapKey = key;
+        this.relationTableName = EntityName.create(relation);
+
+        String[] ss = Strings.splitIgnoreBlank(from, ":");
+        this.fromColumnName = ss[0];
+        String fromField = ss.length > 1 ? ss[1] : null;
+
+        ss = Strings.splitIgnoreBlank(to, ":");
+        this.toColumnName = ss[0];
+        String toField = ss.length > 1 ? ss[1] : null;
+        _make(host, fromField, toField);
+	}
 
     public ManyManyLinkField(Entity<?> host, EntityHolder holder, LinkInfo info) {
         super(host, holder, info);
-        this.targetType = info.manymany.target();
+        this.targetType = guessTargetClass(info, info.manymany.target());
         this.mapKey = info.manymany.key();
         this.relationTableName = EntityName.create(info.manymany.relation());
 
@@ -34,7 +50,9 @@ public class ManyManyLinkField extends AbstractLinkField {
         ss = Strings.splitIgnoreBlank(info.manymany.to(), ":");
         this.toColumnName = ss[0];
         String toField = ss.length > 1 ? ss[1] : null;
-
+        _make(host, fromField, toField);
+    }
+    protected void _make(Entity<?> host, String fromField, String toField) {
         /*
          * 开始分析两个实体的链接字段
          */
@@ -43,10 +61,22 @@ public class ManyManyLinkField extends AbstractLinkField {
         // 用户指定了 "from" 的 Java 字段名
         if (fromField != null) {
             hostField = host.getField(fromField);
+            if (hostField == null) {
+                // 指定了from的字段名,但找不到?!!!
+                throw Lang.makeThrow(    "@ManyMany(from='%s') is invalid, no such field!! Host class=%s",
+                                         fromField,
+                                         host.getType().getName());
+            }
         }
         // 用户指定了 "to" 的 Java 字段名
         if (null != toField) {
             linkedField = ta.getField(toField);
+            if (linkedField == null) {
+                // 指定了from的字段名,但找不到?!!!
+                throw Lang.makeThrow(    "@ManyMany(to='%s') is invalid, no such field!! Host class=%s",
+                                         toField,
+                                         host.getType().getName());
+            }
         }
 
         // 用户仅仅指定了 "from" 的 Java 字段
@@ -82,10 +112,17 @@ public class ManyManyLinkField extends AbstractLinkField {
 
         }
         // 最后再检查一下 ...
-        if (null == hostField || null == linkedField) {
-            throw Lang.makeThrow(    "Invalid @ManyMany in '%s'(%s): lack @Id or @Name",
-                                    info.name,
-                                    host.getType().getName());
+        if (null == hostField) {
+            throw Lang.makeThrow(    "@ManyMany at [%s#%s] is Invalid: lack @Id or @Name at class=%s",
+                                     host.getType().getName(),
+                                     getName(),
+                                     host.getType().getName());
+        }
+        if (null == linkedField) {
+            throw Lang.makeThrow(    "@ManyMany at [%s#%s] is Invalid: lack @Id or @Name at class=%s",
+                                     host.getType().getName(),
+                                     getName(),
+                                     target.getType().getName());
         }
 
     }

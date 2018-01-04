@@ -2,9 +2,18 @@ package org.nutz.mvc.testapp;
 
 import static org.junit.Assert.*;
 
+import java.io.File;
+import java.io.IOException;
+
 import org.junit.Test;
+import org.nutz.http.Response;
+import org.nutz.lang.util.NutMap;
+//import org.nutz.log.Log;
+//import org.nutz.log.Logs;
 
 public class BaseTest extends BaseWebappTest {
+    
+    //private static final Log log = Logs.get();
 
     @Test
     public void test_json_adaptor() {
@@ -70,4 +79,36 @@ public class BaseTest extends BaseWebappTest {
         get("/common/servlet_obj");
         assertEquals(200, resp.getStatus());
     }
+    
+    @Test
+    public void test_aop_trans_1() {
+        String name = ""+System.currentTimeMillis();
+        get("/aop/test1?name="+name);
+        assertEquals(200, resp.getStatus());
+        get("/aop/test1/result?name="+name);
+        assertEquals(200, resp.getStatus());
+        assertEquals("0", resp.getContent());
+    }
+    
+    @Test
+    public void test_http_method_override() {
+        Response resp = post("/common/httpmethods?_method=DELETE", new NutMap("_method", "DELETE"));
+        assertEquals(200, resp.getStatus());
+        assertEquals("DELETE", resp.getContent());
+    }
+    
+
+    @Test
+    public void test_issue_1220() throws IOException {
+        File f = File.createTempFile("abc_", ".json");
+        org.nutz.lang.Files.write(f, "abc");
+        File f2 = File.createTempFile("def_", ".json");
+        org.nutz.lang.Files.write(f2, "def");
+        upload("/upload/issue1220", new NutMap("file", new File[]{f, f2}));
+        assertEquals(200, resp.getStatus());
+        String cnt = resp.getContent();
+        System.out.println(cnt);
+        assertEquals("2,3,3", cnt);
+    }
+    
 }

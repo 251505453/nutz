@@ -4,7 +4,7 @@
 ------------------------------------------------------------------------------------------
 动作链机制概述
 
-    在新的版本中(1.b.36)之后的版本，Nutz.Mvc 统一采用动作链机制来处理每一个 HTTP 请求。
+    Nutz.Mvc 统一采用动作链机制来处理每一个 HTTP 请求。
     我们认为:
      * 对于一个 HTTP 请求的处理实际上是由一系列子处理构成的
          * 比如根据映射找到入口函数
@@ -33,17 +33,17 @@
     采用默认的动作链工厂实现类({#0000AA;*org.nutz.mvc.impl.NutActionChainMaker})
 
     如果你需要定制动作链工厂，你可以通过类似下面的形式，声明自己特殊配置的动作链工厂：
-    {{{
+    {{{<JAVA>
     @ChainBy(args={"配置文件A路径", "配置文件B路径"})
     }}}
     
     你也可以采用自己的动作链工厂实现类
-    {{{
+    {{{<JAVA>
     @ChainBy(type=MyChainMaker.class, args={...})
     }}}
     
     如果你的动作链工厂需要更复杂的配置，你可以交给 Ioc 容器来管理
-    {{{
+    {{{<JAVA>
     @ChainBy(type=MyChainMaker.class, args={"ioc:myChianMaker"})
     }}}
     这样，你就可以在 Ioc 容器里，声明一个 "myChainMaker" 对象，来对其做任何你想要的配置。
@@ -61,13 +61,13 @@
     {#AAAAAA;@Chain} 注解的话，就是使用这个动作链。你可以通过自己的配置文件覆盖它。
 
     它的构造函数定义为：
-    {{{
+    {{{<JAVA>
     public NutActionChainMaker(String...args) {
         ...
     }}}
     接受变参数数组，每个参数，都是你配置文件的路径，可以是类路径，也可以是绝对路径，当然
     你也可以写成:
-    {{{
+    {{{<JAVA>
     @ChainBy(args={"${app.root}/WEB-INF/chain/mychain.js"})
     }}}
     其中 `${app.root}` 会被 Nutz.Mvc 替换成你的应用在服务器上的根目录。
@@ -77,9 +77,9 @@
 
     每个配置文件你可以配置多个动作链，每个动作链需要一个名字，以便在入口函数通过 
     {#AAAAAA;@Chain}注解来引用，下面让我们来看看默认动作链配置文件的内容：
-    {{{
+    {{{<json>
     {
-        default : {
+        "default" : {
             ps : [
                 "org.nutz.mvc.impl.processor.UpdateRequestAttributesProcessor",
                 "org.nutz.mvc.impl.processor.EncodingProcessor",
@@ -124,7 +124,7 @@
     如果你读完了上述小节，本节光看标题就足够了。
 
     但是，我唠叨成性，这里再举个小例子：
-    {{{
+    {{{<JAVA>
     @At("/a")
     @Chain("abc")
     public void funcA(){}
@@ -146,17 +146,149 @@
 
     原因不解释。
 
+配置示例1,引用ioc里面的bean
+------------------------------------------------------
+
+	chain.js的代码
+	
+	{{{<js>
+	{
+		"default" : {
+			"ps" : [
+      			"org.nutz.mvc.impl.processor.UpdateRequestAttributesProcessor",
+      			"org.nutz.mvc.impl.processor.EncodingProcessor",
+      			"org.nutz.mvc.impl.processor.ModuleProcessor",
+      			"ioc:wxProcessor", // 引用一个叫wxProcessor的ioc bean, 必须是prototype,即singleton=false
+      			"org.nutz.mvc.impl.processor.ActionFiltersProcessor",
+     			 "org.nutz.mvc.impl.processor.AdaptorProcessor",
+      			"org.nutz.mvc.impl.processor.MethodInvokeProcessor",
+      			"org.nutz.mvc.impl.processor.ViewProcessor"
+      		],
+			"error" : 'org.nutz.mvc.impl.processor.FailProcessor'
+		}
+	}
+	}}}
+
+	WxProcessor类, 标准的注解式Ioc, 确保IocBy扫描到这个类哦
+	
+	{{{
+	// 注意, 确保是非单例哦
+	@IocBean(singleton=false) //默认生成的名字就是类名然后首字母小写,即wxProcessor,对应了chain.js中的配置
+	public class WxProcessor extend AbstractProcessor {
+
+    	@Inject Dao dao;
+    	@Inject XXXService xxxService;
+
+    	// 其他方法.....
+	}
+	}}}
+
+配置示例2,不需要ioc注入
+-----------------------------------------
 
 
+	chain.js的代码
+	
+	{{{
+	{
+		"default" : {
+			"ps" : [
+      			"org.nutz.mvc.impl.processor.UpdateRequestAttributesProcessor",
+      			"org.nutz.mvc.impl.processor.EncodingProcessor",
+      			"org.nutz.mvc.impl.processor.ModuleProcessor",
+      			"net.wendal.nutzbook.mvc.LogTimeProcessor", // 直接写类名
+      			"org.nutz.mvc.impl.processor.ActionFiltersProcessor",
+     			 "org.nutz.mvc.impl.processor.AdaptorProcessor",
+      			"org.nutz.mvc.impl.processor.MethodInvokeProcessor",
+      			"org.nutz.mvc.impl.processor.ViewProcessor"
+      		],
+			"error" : 'org.nutz.mvc.impl.processor.FailProcessor'
+		}
+	}
+	}}}
+
+	LogTimeProcessor类
+	
+	{{{
+package net.wendal.bootstrap.mvc;
+
+import javax.servlet.http.HttpServletRequest;
+
+import org.nutz.lang.Stopwatch;
+import org.nutz.log.Log;
+import org.nutz.log.Logs;
+import org.nutz.mvc.ActionContext;
+import org.nutz.mvc.impl.processor.AbstractProcessor;
+
+public class LogTimeProcessor extends AbstractProcessor {
+	
+	private static final Log log = Logs.get();
+
+	public LogTimeProcessor() {
+	}
+
+	@Override
+	public void process(ActionContext ac) throws Throwable {
+		Stopwatch sw = Stopwatch.begin();
+		try {
+			doNext(ac);
+		} finally {
+			sw.stop();
+			if (log.isDebugEnabled()) {
+				HttpServletRequest req = ac.getRequest();
+				log.debugf("[%-4s]URI=%s %sms", req.getMethod(), req.getRequestURI(), sw.getDuration());
+			}
+		}
+	}
+
+}
+
+	}}}
+
+-----------------------------------------------------------------------------------------
+用代码方式配置
 
 
+	不想用js配置,觉得繁琐,要不试试代码方式配置,因为@ChainBy只需要一个实现了ActionChainMaker的类哦
+	
+	{{{
+	public class MyActionChainMaker implements ActionChainMaker {
+		
+		// 该接口只有一个方法
+		public ActionChain eval(NutConfig config, ActionInfo ai) {
+			// 提醒: config可以获取ioc等信息, ai可以获取方法上的各种配置及方法本身
+			// 正常处理的列表
+			List<Processor> list = new ArrayList<>();
+			list.add(new UpdateRequestAttributesProcessor()); // 设置base/msg等内置属性
+			list.add(new EncodingProcessor()); // 设置编码信息@Encoding
+			list.add(new ModuleProcessor()); // 获取入口类的对象,从ioc或直接new
+			list.add(new ActionFiltersProcessor()); // 处理@Filters
+			list.add(new AdaptorProcessor()); // 处理@Adaptor
+			list.add(new MethodInvokeProcessor()); // 执行入口方法
+			list.add(new ViewProcessor()); // 对入口方法进行渲染@Ok
+			for (Processor p : list) {
+				p.init(config, ai);
+			}
+			
+			// 最后是专门负责兜底的异常处理器,这个处理器可以认为是全局异常处理器,对应@Fail
+			Processor error = new FailProcessor();
+			error.init(config, ai);
+			return new NutActionChain(list, error, ai);
+		}	
+	}
+	
+	
+	@ChainBy(type=MyActionChainMaker.class, args={})
+	public class MainModule{}
+	}}}
+	
+-------------------------------------------------------------------------------------------
+自定义处理器的一些提醒
 
-
-
-
-
-
-
+	* 尽量不要吃掉异常,如果需要catch并忽略,严重建议打印一下日志
+	* ActionContext可以获取的信息,取决于所在的位置,例如AdaptorProcessor之前的处理器在doNext之前拿不到方法参数,但之后可以获取.
+	* doNext是继续执行下一个处理器的方法,如果要终止调用,不执行该方法就可以了
+	* 绝大多数情况下处理器都不是单例,也不应该是单例!!如果从ioc容器获取,务必确保该处理器声明为singleton=false
 
 
 

@@ -4,6 +4,7 @@ require "sinatra"
 require "sinatra/namespace"
 require "sinatra/reloader" if development?
 require "sinatra/json"
+require "json"
 
 get '/' do
   "Hello, here is nutz test server."
@@ -73,25 +74,38 @@ namespace '/nutztest' do
     get("/servlet_obj") do
       context_path
     end
+
+    delete("/httpmethods") do
+      "DELETE"
+    end
+  end
+
+  namespace "/aop" do
+    get("/test1") do
+    end
+
+    get("/test1/result") do
+      "0"
+    end
   end
 
   # AllView.java
   namespace '/views' do
     %w{for for2 for3}.each do |item|
       get "/#{item}" do
-          context_path
+        context_path
       end
     end
 
     %w{jsp jsp2 jsp3 jsp4}.each do |item|
       get "/#{item}" do
-          "null"
+        "null"
       end
     end
 
     %w{raw raw2 raw3}.each do |item|
       get "/#{item}" do
-          "ABC"
+        "ABC"
       end
     end
 
@@ -104,15 +118,30 @@ namespace '/nutztest' do
 
     %w{red red2 red3}.each do |item|
       get "/#{item}" do
-          context_path
+        context_path
       end
+    end
+
+    get "/resp/to/:type" do
+      case params["type"]
+      when "1"
+        "hi"
+      when "2"
+        json :name => "wendal"
+      else
+        context_path
+      end
+    end
+
+    get "/resp2" do
+      "hi"
     end
   end
 
   # SimpleAdaptorTest.java
   namespace '/adaptor' do
     get '/github/issue/543' do
-      (Date.parse(params[:d]).to_time.to_i*1000).to_s
+      (Time.parse(params[:d]).getlocal("+08:00").to_time.to_i*1000).to_s
     end
 
     get '/err/param' do
@@ -136,11 +165,34 @@ namespace '/nutztest' do
       "I am abc"
     end
 
+    get "/default_value" do
+      params[:abc] || "123456"
+    end
+
+    post "/err_ctx" do
+      request.body.string.empty? ? "true" : (request.body.string == "{}").to_s
+    end
+
+    post "/sqldate" do
+      params[:checkDate]
+    end
+
+    get "/param_without_param" do
+      params[:uids].split(",").to_json if params[:uids]
+    end
+
+    post "/issue1069" do
+      params[:showAdd] || ""
+    end
   end
 
   # UploadTest.java
   post '/upload/image' do
     "image&3"
+  end
+  
+  get '/mapping/issue1212/sayhi' do
+  	"hi"
   end
 
 end

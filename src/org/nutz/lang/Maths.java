@@ -1,5 +1,8 @@
 package org.nutz.lang;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * A group of helper functions to counting some ...
  * 
@@ -11,8 +14,8 @@ public abstract class Maths {
     /**
      * 返回最大的一个
      * 
-     * @param nums
-     * @return
+     * @param nums 需要比较的数组
+     * @return 最大值
      */
     public static int max(int... nums) {
         return takeOne(new CompareSomeThing() {
@@ -25,8 +28,8 @@ public abstract class Maths {
     /**
      * 返回最小的一个
      * 
-     * @param nums
-     * @return
+     * @param nums 需要比较的数组
+     * @return 最小值
      */
     public static int min(int... nums) {
         return takeOne(new CompareSomeThing() {
@@ -112,6 +115,70 @@ public abstract class Maths {
             mask += 1 << i;
         }
         return bs & mask;
+    }
+
+    /**
+     * 获得字符数组的全排列
+     * 
+     * @param arr 字符数组
+     * @return 全排列
+     */
+    public static String[] permutation(char... arr) {
+        return permutation(arr.length, arr);
+    }
+
+    /**
+     * 按照指定长度, 获得字符数组的全排列
+     * 
+     * @param arr 字符数组
+     * @return 全排列
+     */
+    public static String[] permutation(int length, char... arr) {
+        if (arr == null || arr.length == 0 || length <= 0 || length > arr.length) {
+            return null;
+        }
+        List<String> slist = new ArrayList<String>();
+        char[] b = new char[length]; // 辅助空间，保存待输出组合数
+        getCombination(slist, arr, length, 0, b, 0);
+        return slist.toArray(new String[]{});
+    }
+
+    // --------------------------- 以下为几个辅助方法
+
+    private static void getCombination(List<String> slist,
+                                       char[] a,
+                                       int n,
+                                       int begin,
+                                       char[] b,
+                                       int index) {
+        if (n == 0) {// 如果够n个数了，输出b数组
+            getAllPermutation(slist, b, 0);// 得到b的全排列
+            return;
+        }
+        for (int i = begin; i < a.length; i++) {
+            b[index] = a[i];
+            getCombination(slist, a, n - 1, i + 1, b, index + 1);
+        }
+
+    }
+
+    private static void getAllPermutation(List<String> slist, char[] a, int index) {
+        /* 与a的元素个数相同则输出 */
+        if (index == a.length - 1) {
+            slist.add(String.valueOf(a));
+            return;
+        }
+        for (int i = index; i < a.length; i++) {
+            swap(a, index, i);
+            getAllPermutation(slist, a, index + 1);
+            swap(a, index, i);
+        }
+    }
+
+    private static void swap(char[] arr, int i, int j) {
+        char temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
     }
 
 }

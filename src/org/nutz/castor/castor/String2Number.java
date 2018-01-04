@@ -45,4 +45,5 @@ public abstract class String2Number<T> extends Castor<String, T> {
                                                 Lang.unwrapThrow(e));
         }
     }
+
 }

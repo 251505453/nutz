@@ -1,6 +1,7 @@
 package org.nutz.lang;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -30,14 +31,19 @@ public class Invoking {
     private static class DefaultInvoker extends Invoker {
 
         private Object[] args;
+        
+        private boolean isStatic;
 
         public DefaultInvoker(Method method, Object[] args) {
             super(method);
             this.args = args;
+            this.isStatic = Modifier.isStatic(method.getModifiers());
         }
 
         @Override
         Object invoke(Object obj) throws Exception {
+            if (isStatic)
+                return method.invoke(null, args);
             return method.invoke(obj, args);
         }
     }
@@ -150,23 +156,43 @@ public class Invoking {
             throw new InvokingException("Don't know how to invoke [%s].%s() by args:\n %s",
                                         type.getName(),
                                         methodName,
-                                        Lang.concat('\n', args));
-        msg = format(    "Fail to invoke [%s].%s() by args:\n %s",
-                        type.getName(),
-                        methodName,
-                        Lang.concat('\n', args))
-                + "\nFor the reason: %s";
+                                        safeConcat(args));
+        this.typeName = type.getName();
+        this.methodName = methodName;
+        this.args = args;
+    }
+    
+    public static String safeConcat(Object[] objs) {
+        if (objs == null || objs.length == 0)
+            return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append(Strings.safeToString(objs[0], null));
+        if (objs.length > 1) {
+            for (int i = 1; i < objs.length; i++) {
+                sb.append("\n").append(Strings.safeToString(objs[i], null));
+            }
+        }
+        return sb.toString();
     }
 
-    private String msg;
     private Invoker invoker;
+    private String typeName;
+    private String methodName;
+    private Object[] args;
+    public String msg() {
+        return format(    "Fail to invoke [%s].%s() by args:\n %s",
+                                typeName,
+                                methodName,
+                                safeConcat(args))
+                        + "\nFor the reason: %s";
+    }
 
     public Object invoke(Object obj) {
         try {
             return invoker.invoke(obj);
         }
         catch (Throwable e) {
-            throw new InvokingException(msg, Lang.unwrapThrow(e));
+            throw new InvokingException(msg(), Lang.unwrapThrow(e));
         }
     }
 

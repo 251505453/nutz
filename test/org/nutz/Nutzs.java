@@ -7,7 +7,9 @@ import java.util.HashMap;
 import java.security.PrivilegedAction;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicLong;
 
+import org.nutz.aop.AbstractClassAgent;
 import org.nutz.aop.ClassDefiner;
 import org.nutz.aop.DefaultClassDefiner;
 import org.nutz.dao.DatabaseMeta;
@@ -25,7 +27,7 @@ public class Nutzs {
 
     private static Properties pp;
 
-    private static void checkProperties() {
+    public static void checkProperties() {
         if (null == pp)
             loadProperties("nutz-test.properties");
     }
@@ -36,7 +38,7 @@ public class Nutzs {
             pp = new Properties();
             File f = Files.findFile(fileName);
             if(f == null)
-                throw new RuntimeException("nutz-test.properties Not FOUND!!!");
+                throw new RuntimeException("nutz-test.properties Not FOUND!!! tmpl.nutz-test.properties is a example.");
             is = Streams.fileIn(f);
             pp.load(is);
         }
@@ -104,10 +106,18 @@ public class Nutzs {
         notSupport(format("[%S] don't support this test", meta.getTypeName()));
     }
 
+    /**
+     * 调用此方法将改变AOP类名命名规则
+     * @return
+     */
+    @SuppressWarnings("deprecation")
     public static ClassDefiner cd() {
+        if (AbstractClassAgent.t == null)
+            AbstractClassAgent.t = new AtomicLong(8);
+        AbstractClassAgent.t.incrementAndGet();
         return AccessController.doPrivileged(new PrivilegedAction<DefaultClassDefiner>() {
             public DefaultClassDefiner run() {
-                return new DefaultClassDefiner(Nutzs.class.getClassLoader());
+                return new DefaultClassDefiner();
             }
         });
     }

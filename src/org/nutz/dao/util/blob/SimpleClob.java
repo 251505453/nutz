@@ -1,23 +1,30 @@
 package org.nutz.dao.util.blob;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.io.Reader;
+import java.io.Serializable;
 import java.io.Writer;
 import java.sql.Clob;
 import java.sql.SQLException;
 
+import org.nutz.dao.jdbc.Jdbcs;
 import org.nutz.lang.Files;
 import org.nutz.lang.Lang;
 import org.nutz.lang.Streams;
 
-public class SimpleClob implements Clob {
+public class SimpleClob implements Clob, Serializable {
 
+    private static final long serialVersionUID = -5465130240603178708L;
+    
     private File file;
+    
+    public SimpleClob() {}
 
     public SimpleClob(File f) {
         this.file = f;
@@ -73,7 +80,9 @@ public class SimpleClob implements Clob {
 
     public void truncate(long len) throws SQLException {
         try {
-            new RandomAccessFile(file, "rw").setLength(len);
+            RandomAccessFile raf = new RandomAccessFile(file, "rw");
+            raf.setLength(len);
+            raf.close();
         }
         catch (FileNotFoundException e) {
             throw Lang.wrapThrow(e);
@@ -91,4 +100,11 @@ public class SimpleClob implements Clob {
         throw Lang.noImplement();
     }
 
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        Streams.writeAndClose(out, new FileInputStream(file));
+    }
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException{
+        file = Jdbcs.getFilePool().createFile(".clob");
+        Files.write(file, in);
+    }
 }

@@ -2,19 +2,29 @@ package org.nutz.dao.impl.sql.run;
 
 import static java.lang.String.format;
 
+import java.io.Serializable;
 import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
+import java.util.HashMap;
+import java.util.Map.Entry;
 
 import org.nutz.dao.DaoException;
+import org.nutz.dao.DatabaseMeta;
+import org.nutz.dao.entity.Record;
 import org.nutz.dao.impl.DaoExecutor;
+import org.nutz.dao.jdbc.JdbcExpert;
 import org.nutz.dao.jdbc.ValueAdaptor;
 import org.nutz.dao.pager.Pager;
 import org.nutz.dao.sql.DaoStatement;
+import org.nutz.dao.sql.Sql;
 import org.nutz.dao.sql.SqlType;
+import org.nutz.dao.sql.VarIndex;
+import org.nutz.dao.sql.VarSet;
 import org.nutz.dao.util.Daos;
 import org.nutz.lang.Lang;
 import org.nutz.log.Log;
@@ -48,11 +58,10 @@ public class NutDaoExecutor implements DaoExecutor {
             case CREATE:
             case DROP:
                 _runStatement(conn, st);
-                st.onAfter(conn, null);
                 break;
             // 仅仅是运行回调
             case RUN:
-                st.onAfter(conn, null);
+                st.onAfter(conn, null, null);
                 break;
             case CALL:
             case EXEC:
@@ -64,8 +73,13 @@ public class NutDaoExecutor implements DaoExecutor {
             // case INSERT:
             // 见鬼了，未知类型，也当作普通 SQL 运行吧，见 Issue#13
             default:
+            	if (st.isForceExecQuery()) {
+            		// run as select
+            		_runSelect(conn, st);
+                    break;
+            	}
                 if (st.getSqlType() == SqlType.OTHER && log.isInfoEnabled())
-                    log.info("Can't indentify SQL type :   " + st);
+                    log.info("Can't identify SQL type :   " + st);
                 paramMatrix = st.getParamMatrix();
                 // 木有参数，直接运行
                 if (null == paramMatrix || paramMatrix.length == 0) {
@@ -75,8 +89,6 @@ public class NutDaoExecutor implements DaoExecutor {
                 else {
                     _runPreparedStatement(conn, st, paramMatrix);
                 }
-                // 运行回调
-                st.onAfter(conn, null);
             }
         }
         // If any SQLException happend, throw out the SQL string
@@ -84,12 +96,12 @@ public class NutDaoExecutor implements DaoExecutor {
             if (log.isDebugEnabled()) {
             	log.debug("SQLException", e);
             	SQLException nextException = e.getNextException();
-                if (e != null)
+                if (nextException != null)
                 	log.debug("SQL NextException", nextException);
             }
             throw new DaoException(format(    "!Nutz SQL Error: '%s'\nPreparedStatement: \n'%s'",
                                             st.toString(),
-                                            st.toPreparedStatement()), e);
+                                            st.toPreparedStatement()) + "\nCaseMessage=" + e.getMessage(), e);
         }
 
     }
@@ -110,22 +122,66 @@ public class NutDaoExecutor implements DaoExecutor {
 		CallableStatement stmt = null;
 		ResultSet rs = null;
 		try {
-			stmt = conn.prepareCall(sql);
-			ValueAdaptor[] adaptors = st.getAdaptors();
+            stmt = conn.prepareCall(sql);
+            ValueAdaptor[] adaptors = st.getAdaptors();
+            HashMap<Integer, OutParam> outParams = new HashMap<Integer, OutParam>();
+            if (st instanceof Sql) {
+                VarIndex varIndex = ((Sql) st).paramIndex();
+                VarSet varSet = ((Sql) st).params();
+                for (int i = 0; i < varIndex.size(); i++) {
+                    String name = varIndex.getOrderName(i);
+                    if (name.startsWith("OUT") && varSet.get(name).getClass() == Integer.class) {
+                        Integer t = (Integer) varSet.get(name);
+                        outParams.put(i, new OutParam(name, t));
+                    }
+                }
+            }
 			// 创建语句并设置参数
-			if (paramMatrix != null && paramMatrix.length > 0) {
-				for (int i = 0; i < paramMatrix[0].length; i++) {
-			        adaptors[i].set((PreparedStatement) stmt,
-			                paramMatrix[0][i], i + 1);
-			    }
-			}
-			
+            if (paramMatrix != null && paramMatrix.length > 0) {
+                PreparedStatement pst = (PreparedStatement) stmt;
+                Object[] pm = paramMatrix[0];
+                for (int i = 0; i < pm.length; i++) {
+                    OutParam outParam = outParams.get(i);
+                    if (outParam == null)
+                        adaptors[i].set(pst, pm[i], i + 1);
+                    else
+                        stmt.registerOutParameter(i + 1, outParam.jdbcType);
+                }
+            }
+
 			stmt.execute();
-			
+
+            if (outParams.size() > 0) {
+                Record r = Record.create();
+                for (Entry<Integer, OutParam> en : outParams.entrySet()) {
+                    OutParam outParam = en.getValue();
+                    int jdbcIndex = en.getKey() + 1;
+                    Object value;
+                    switch (outParam.jdbcType) {
+                    case Types.INTEGER:
+                        value = stmt.getInt(jdbcIndex);
+                        break;
+                    case Types.TIMESTAMP:
+                        value = stmt.getTimestamp(jdbcIndex);
+                        break;
+                    case Types.CLOB:
+                        value = stmt.getString(jdbcIndex);
+                        break;
+                    case Types.DATE:
+                        value = stmt.getDate(jdbcIndex);
+                        break;
+                    default:
+                        value = stmt.getObject(jdbcIndex);
+                        break;
+                    }
+                    r.set(outParam.name.substring(3), value);
+                }
+                st.getContext().attr("OUT", r);
+            }
 			//先尝试读取第一个,并调用一次回调
 			rs = stmt.getResultSet();
 			try {
-				st.onAfter(conn, rs);
+				st.onAfter(conn, rs, null);
 			}
 			finally {
 				if (rs != null)
@@ -137,21 +193,19 @@ public class NutDaoExecutor implements DaoExecutor {
 					rs = stmt.getResultSet();
 					try {
 						if (rs != null)
-							st.onAfter(conn, rs);
+							st.onAfter(conn, rs, null);
 					}
 					finally {
 						if (rs != null)
 							rs.close();
 					}
-				// NOT support for this yet.  by wendal
-				//} else if (stmt.getUpdateCount() > -1) {
-				//	st.onAfter(conn, null);
 				}
 				break;
 			}
 		}
 		finally {
-			stmt.close();
+			if (stmt != null)
+				stmt.close();
 		}
 	}
 
@@ -183,8 +237,6 @@ public class NutDaoExecutor implements DaoExecutor {
             // 木有参数，直接运行
             if (null == paramMatrix || paramMatrix.length == 0
                     || paramMatrix[0].length == 0) {
-                if (log.isDebugEnabled())
-                    log.debug(st);
                 stat = conn.createStatement(st.getContext()
                         .getResultSetType(), ResultSet.CONCUR_READ_ONLY);
                 if (lastRow > 0)
@@ -201,9 +253,6 @@ public class NutDaoExecutor implements DaoExecutor {
                     if (log.isWarnEnabled())
                         log.warnf("Drop last %d rows parameters for:\n%s",
                                 paramMatrix.length - 1, st);
-                } 
-                if (log.isDebugEnabled()) {
-                    log.debug(st);
                 }
 
                 // 准备运行语句
@@ -225,7 +274,7 @@ public class NutDaoExecutor implements DaoExecutor {
             if (startRow > 0)
                 rs.absolute(startRow);
             // 执行回调
-            st.onAfter(conn, rs);
+            st.onAfter(conn, rs, stat);
         } finally {
             Daos.safeClose(stat, rs);
         }
@@ -244,13 +293,12 @@ public class NutDaoExecutor implements DaoExecutor {
         String sql = st.toPreparedStatement();
         PreparedStatement pstat = null;
 
-        // 打印调试信息
-        if (log.isDebugEnabled())
-            log.debug(st);
-
         try {
             // 创建 SQL 语句
-            pstat = conn.prepareStatement(sql);
+        	if (st.getContext().attr("RETURN_GENERATED_KEYS") == null)
+        		pstat = conn.prepareStatement(sql);
+        	else
+        		pstat = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
 
             // 就一条记录，不要批了吧
             if (paramMatrix.length == 1) {
@@ -259,6 +307,7 @@ public class NutDaoExecutor implements DaoExecutor {
                 }
                 pstat.execute();
                 st.getContext().setUpdateCount(pstat.getUpdateCount());
+                st.onAfter(conn, null, pstat);
                 pstat.close();
                 statIsClosed = true;
             }
@@ -281,6 +330,7 @@ public class NutDaoExecutor implements DaoExecutor {
                 if (sum == 0)
                     sum = pstat.getUpdateCount();
 
+                st.onAfter(conn, null, pstat);
                 pstat.close();
                 statIsClosed = true;
                 
@@ -302,14 +352,11 @@ public class NutDaoExecutor implements DaoExecutor {
         Statement stat = null;
         String sql = st.toPreparedStatement();
 
-        // 打印调试信息
-        if (log.isDebugEnabled())
-            log.debug(sql);
-
         try {
             stat = conn.createStatement();
             stat.execute(sql);
             st.getContext().setUpdateCount(stat.getUpdateCount());
+            st.onAfter(conn, null, stat);
             stat.close();
             statIsClosed = true;
         }
@@ -321,5 +368,35 @@ public class NutDaoExecutor implements DaoExecutor {
         if (log.isTraceEnabled())
             log.trace("...DONE");
     }
-
+    
+    protected DatabaseMeta meta;
+    
+    protected JdbcExpert expert;
+    
+    public void setMeta(DatabaseMeta meta) {
+		this.meta = meta;
+	}
+    
+    public void setExpert(JdbcExpert expert) {
+		this.expert = expert;
+	}
+    
+    // 写在这里完全是为了兼容老版本的log4j配置
+    public static void printSQL(DaoStatement sql) {
+        // 打印调试信息
+        if (log.isDebugEnabled())
+            log.debug(sql.forPrint());
+    }
+    
+    static class OutParam implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String name;
+        int jdbcType;
+        public OutParam() {}
+        public OutParam(String name, int jdbcType) {
+            super();
+            this.name = name;
+            this.jdbcType = jdbcType;
+        }
+    }
 }

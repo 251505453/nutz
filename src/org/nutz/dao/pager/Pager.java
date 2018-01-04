@@ -9,7 +9,7 @@ import org.nutz.log.Logs;
 public class Pager implements PageInfo, Serializable {
 
     private static final long serialVersionUID = 8848523495013555357L;
-    
+
     private static final Log log = Logs.get();
 
     /**
@@ -30,8 +30,24 @@ public class Pager implements PageInfo, Serializable {
     private int recordCount;
 
     public Pager() {
-        pageNumber = 1;
-        pageSize = DEFAULT_PAGE_SIZE;
+        this.pageNumber = 1;
+        this.pageSize = DEFAULT_PAGE_SIZE;
+    }
+
+    public Pager(int pageNumber) {
+        if (pageNumber < 1)
+            pageNumber = 1;
+        this.pageNumber = pageNumber;
+        this.pageSize = DEFAULT_PAGE_SIZE;
+    }
+
+    public Pager(int pageNumber, int pageSize) {
+        if (pageNumber < 1)
+            pageNumber = 1;
+        if (pageSize < 1)
+            pageSize = DEFAULT_PAGE_SIZE;
+        this.pageNumber = pageNumber;
+        this.pageSize = pageSize;
     }
 
     public Pager resetPageCount() {
@@ -58,8 +74,8 @@ public class Pager implements PageInfo, Serializable {
     }
 
     public Pager setPageNumber(int pn) {
-    	if (1 > pn && log.isInfoEnabled())
-    		log.infof("PageNumber shall start at 1 ,but input is %d, that mean pager is disable", pn);
+        if (1 > pn && log.isInfoEnabled())
+            log.infof("PageNumber shall start at 1, but input is %d, that mean pager is disable", pn);
         pageNumber = pn;
         return this;
     }
@@ -98,4 +114,11 @@ public class Pager implements PageInfo, Serializable {
         return pageNumber == pageCount;
     }
 
+    public boolean hasNext() {
+        return !isLast();
+    }
+
+    public boolean hasPrevious() {
+        return !isFirst();
+    }
 }

@@ -9,7 +9,11 @@ import org.nutz.dao.sql.SqlType;
 
 public abstract class AbstractPItem implements PItem {
 
+    private static final long serialVersionUID = 1L;
+
     protected Pojo pojo;
+    
+    protected boolean top = true;
 
     public Pojo getPojo() {
         return pojo;
@@ -43,9 +47,17 @@ public abstract class AbstractPItem implements PItem {
         if (null != en) {
             MappingField mf = en.getField(name);
             if (null != mf)
-                return mf.getColumnName();
+                return mf.getColumnNameInSql();
         }
         return name;
     }
 
+    public AbstractPItem setTop(boolean top) {
+        this.top = top;
+        return this;
+    }
+    
+    public boolean isTop() {
+        return top;
+    }
 }

@@ -32,10 +32,9 @@
     </description>
 
 	<property environment="env" />
-	<property name="build.compiler" value="org.eclipse.jdt.core.JDTCompilerAdapter"/>
 	<property name="OUTPUT" value="." />
 
-	<property name="nutz-version" value="1.b.50" />
+	<property name="nutz-version" value="1.r.63" />
 	<tstamp>
 		<format property="now-date" locale="en" pattern="yyyyMMdd_hhmmaa" timezone="Asia/Shanghai" />
 	</tstamp>
@@ -51,8 +50,8 @@
 	<property name="zdoc-dir" value="${pub-dir}/manual" />
 	<property name="zdoc-en-dir" value="${pub-dir}/manual_en" />
 
-	<property name="nutz.dest.pre" value="nutz-${nutz-version}-snapshot-${now-date}" />
-	<!-- <property name="nutz.jar.pre" value="nutz-${nutz-version}"></property> -->
+	<!--property name="nutz.dest.pre" value="nutz-${nutz-version}-snapshot-${now-date}" /-->
+	<property name="nutz.dest.pre" value="nutz-${nutz-version}"></property>
 	<!-- 用于正式版 -->
 
 	<property name="nutz.jar.source" value="${pub-dir}/${nutz.dest.pre}-sources.jar" />
@@ -102,12 +101,6 @@
 	<target name="create-jar">
 		<jar destfile="${nutz.jar.source}" basedir="src" encoding="utf-8" />
 
-		<javac compiler="org.eclipse.jdt.core.JDTCompilerAdapter" destdir="${classes-dir-jdk5}" debuglevel="lines,vars,source" debug="true" srcdir="src" source="1.5" target="1.5" encoding="utf-8" classpathref="nutz-classpath" includeantruntime="false" />
-		<copy todir="${classes-dir-jdk5}">
-			<fileset file="License.txt" />
-			<fileset dir="src" excludes="**/*.java" />
-		</copy>
-		<jar destfile="${nutz.jar.jdk5}" basedir="${classes-dir-jdk5}" index="true" />
 		<javac destdir="${classes-dir-jdk6}" debuglevel="lines,vars,source" debug="true" srcdir="src" source="1.6" target="1.6" encoding="utf-8" classpathref="nutz-classpath" includeantruntime="false" />
 		<copy todir="${classes-dir-jdk6}">
 			<fileset file="License.txt" />
@@ -179,35 +172,10 @@
 		</taskdef>
 		<echo>Build Html manual for CN</echo>
 		<zdoc suffix="html" src="${basedir}/doc/manual" dest="${basedir}/${zdoc-dir}" />
-		<echo>Build Html manual for EN</echo>
-		<zdoc suffix="html" src="${basedir}/doc/manual_en" dest="${basedir}/${zdoc-en-dir}" />
 		<echo>Build PDF manual for CN</echo>
 		<zdoc suffix="pdf" src="${basedir}/doc/manual" dest="${basedir}/${nutz.manual.pdf}" />
-		<echo>Build PDF manual for EN</echo>
-		<zdoc suffix="pdf" src="${basedir}/doc/manual_en" dest="${basedir}/${nutz.manual_en.pdf}" />
 		<echo>Build RTF manual for CN</echo>
 		<zdoc suffix="rtf" src="${basedir}/doc/manual" dest="${basedir}/${nutz.manual.rtf}" />
-		<echo>Build RTF manual for EN</echo>
-		<zdoc suffix="rtf" src="${basedir}/doc/manual_en" dest="${basedir}/${nutz.manual_en.rtf}" />
-	</target>
-
-	<!-- ================================= 
-          target: jdiff              
-         ================================= -->
-	<target name="jdiff">
-		<property name="JDIFF_HOME" value="${basedir}/build/deps" />
-		<taskdef name="jdiff" classname="jdiff.JDiffAntTask" classpathref="nutz-classpath" />
-		<mkdir dir="${pub-dir}/jdiff" />
-		<jdiff destdir="${pub-dir}/jdiff" verbose="on" stats="on" docchanges="off">
-			<new name="${nutz-version}" encoding="UTF-8">
-				<!-- This is the location of your new source files -->
-				<dirset dir="${basedir}/src" excludes="**/repo/org/**" />
-			</new>
-			<old name="1.b.35" encoding="UTF-8">
-				<!-- This is the location of your old source files -->
-				<dirset dir="${basedir}/build/oldsrc/" excludes="**/repo/org/**" />
-			</old>
-		</jdiff>
 	</target>
 
 	<target name="create-zip">
@@ -220,7 +188,6 @@
 		<antcall target="clean" />
 		<antcall target="init" />
 		<antcall target="create-jar" />
-		<antcall target="jdoc" />
 		<antcall target="manual" />
 		<antcall target="create-zip" />
 		<antcall target="clean" />

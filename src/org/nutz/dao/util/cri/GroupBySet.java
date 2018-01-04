@@ -1,28 +1,31 @@
 package org.nutz.dao.util.cri;
 
 import org.nutz.dao.Condition;
-import org.nutz.dao.DaoException;
 import org.nutz.dao.entity.Entity;
-import org.nutz.dao.impl.sql.pojo.NoParamsPItem;
-import org.nutz.lang.Lang;
+import org.nutz.dao.sql.GroupBy;
 
-public class GroupBySet extends NoParamsPItem {
+public class GroupBySet extends OrderBySet implements GroupBy {
+
+    private static final long serialVersionUID = 1L;
 
 	private String[] names;
 	
 	private Condition having;
 	
+	public GroupBySet() {}
+	
 	public GroupBySet(String...names) {
-		if (Lang.length(names) == 0)
-			throw new DaoException("NULL for GroupBy");
 		this.names = names;
 	}
 	
-	public void having(Condition cnd) {
+	public GroupBy having(Condition cnd) {
 		having = cnd;
+		return this;
 	}
 	
 	public void joinSql(Entity<?> en, StringBuilder sb) {
+	    if (names == null || names.length == 0)
+	        return;
 		sb.append(" GROUP BY ");
 		for (String name : names) {
 			sb.append(_fmtcolnm(en, name));
@@ -41,5 +44,10 @@ public class GroupBySet extends NoParamsPItem {
 				sb.append(sql);
 			}
 		}
+	}
+	
+	public GroupBy groupBy(String ... names) {
+	    this.names = names;
+	    return this;
 	}
 }

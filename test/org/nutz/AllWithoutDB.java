@@ -10,22 +10,23 @@ import org.nutz.ioc.AllIoc;
 import org.nutz.json.AllJson;
 import org.nutz.lang.AllLang;
 import org.nutz.log.AllLog;
+import org.nutz.mapl.MaplTest;
 import org.nutz.mvc.AllMvc;
 import org.nutz.plugin.AllPlugin;
 import org.nutz.resource.AllResourceScan;
 
 @RunWith(Suite.class)
-@Suite.SuiteClasses({    AllLang.class,
-                        AllJson.class,
-                        AllFilePool.class,
-                        AllIoc.class,
-                        AllAop.class,
-                        AllFilePool.class,
-                        AllHttp.class,
-                        AllResourceScan.class,
-                        AllMvc.class,
-                        AllEl.class,
-                        AllLog.class,
-                        AllPlugin.class
-                        })
+@Suite.SuiteClasses({AllLang.class,
+                     AllJson.class,
+                     AllFilePool.class,
+                     AllIoc.class,
+                     AllAop.class,
+                     AllFilePool.class,
+                     AllHttp.class,
+                     AllResourceScan.class,
+                     AllMvc.class,
+                     AllEl.class,
+                     AllLog.class,
+                     AllPlugin.class,
+                     MaplTest.class})
 public class AllWithoutDB {}

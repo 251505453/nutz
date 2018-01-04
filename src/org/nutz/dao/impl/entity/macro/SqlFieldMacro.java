@@ -3,6 +3,8 @@ package org.nutz.dao.impl.entity.macro;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+
 import org.nutz.dao.Sqls;
 import org.nutz.dao.entity.Entity;
 import org.nutz.dao.entity.MappingField;
@@ -15,9 +17,16 @@ import org.nutz.lang.Lang;
 
 public class SqlFieldMacro extends NutPojo {
 
-    private Sql sql;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = -3404648162248580014L;
+
+	private Sql sql;
 
     private MappingField entityField;
+    
+    private boolean shallDuplicate;
 
     private SqlFieldMacro() {
         super();
@@ -29,6 +38,7 @@ public class SqlFieldMacro extends NutPojo {
         this.sql = Sqls.create(str);
         this.setSqlType(this.sql.getSqlType());
         this.setEntity(field.getEntity());
+        shallDuplicate = sql.varIndex().size() > 0 || sql.paramIndex().size() > 0;
     }
 
     @Override
@@ -41,19 +51,13 @@ public class SqlFieldMacro extends NutPojo {
                                         obj.getClass().getName(),
                                         entityField.toString());
 
-            // 填充占位符 ...
-            for (String name : sql.varIndex().names())
-                if (!name.equals("table") && !name.equals("view") && !name.equals("field"))
-                    sql.vars().set(name, en.getField(name).getValue(obj));
-            // 填充变量 ...
-            for (String name : sql.paramIndex().names())
-                sql.params().set(name, en.getField(name).getValue(obj));
+            prepareVarParam(sql);
         }
         return this;
     }
 
-    public void onAfter(Connection conn, ResultSet rs) throws SQLException {
-        if (rs.next()) {
+    public void onAfter(Connection conn, ResultSet rs, Statement stmt) throws SQLException {
+        if (rs != null && rs.next()) {
             String colName = rs.getMetaData().getColumnName(1);
             Object obj = entityField.getAdaptor().get(rs, colName);
             entityField.setValue(this.getOperatingObject(), obj);
@@ -69,11 +73,11 @@ public class SqlFieldMacro extends NutPojo {
     }
 
     public Object[][] getParamMatrix() {
-        return sql.getParamMatrix();
+        return _parseSQL().getParamMatrix();
     }
 
     public String toPreparedStatement() {
-        return _parseSQL(sql.duplicate()).toPreparedStatement();
+        return _parseSQL().toPreparedStatement();
     }
 
     @Override
@@ -83,10 +87,19 @@ public class SqlFieldMacro extends NutPojo {
         re.entityField = entityField;
         re.setSqlType(sql.getSqlType());
         re.setEntity(entityField.getEntity());
+        re.shallDuplicate = shallDuplicate;
         return re;
     }
 
-    private Sql _parseSQL(Sql sql) {
+    private Sql _parseSQL() {
+        if (!shallDuplicate)
+            return sql;
+        Sql sql = this.sql.duplicate();
+        prepareVarParam(sql);
+        return sql;
+    }
+
+    protected void prepareVarParam(Sql sql) {
         for (String name : sql.varIndex().names()) {
             if ("view".equals(name))
                 sql.vars().set("view", getEntity().getViewName());
@@ -94,15 +107,29 @@ public class SqlFieldMacro extends NutPojo {
                 sql.vars().set("table", getEntity().getTableName());
             else if ("field".equals(name))
                 sql.vars().set("field", entityField.getColumnName());
-            else
-                sql.vars().set(name, getEntity().getField(name).getValue(getOperatingObject()));
+            else {
+                sql.vars().set(name, getFieldVale(name, getOperatingObject()));
+            }
         }
 
         for (String name : sql.paramIndex().names()) {
-            sql.params().set(name, getEntity().getField(name).getValue(getOperatingObject()));
+            if ("view".equals(name))
+                sql.params().set("view", getEntity().getViewName());
+            else if ("table".equals(name))
+                sql.params().set("table", getEntity().getTableName());
+            else if ("field".equals(name))
+                sql.params().set("field", entityField.getColumnName());
+            else
+                sql.params().set(name, getFieldVale(name, getOperatingObject()));
         }
-
-        return sql;
     }
-
+    
+    protected Object getFieldVale(String name, Object obj) {
+        MappingField mf = getEntity().getField(name);
+        if (mf == null) {
+            return getEntity().getMirror().getEjecting(name).eject(obj);
+        } else {
+            return mf.getValue(obj);
+        }
+    }
 }

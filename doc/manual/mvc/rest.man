@@ -11,17 +11,20 @@
     加上今天是个风和日丽的日子，Nutz.Mvc 重构完毕。架构这么灵活强大，
     那么我就把这个特性加上吧，呵呵。
 
+    注意, Nutz支持的是Restful风格的映射, 但并非一个Restful实现.
+
 --------------------------------------------------------------------------------------
 如何使用 REST
     
-    暂时的，Nutz.Mvc 对于 REST 的支持，仅仅包括四个方法：
+    Nutz.Mvc 对于 REST 的支持，包括4个常用方法及通用定义方法：
      * GET
      * POST
      * PUT
      * DELETE
+     * @At(methods="xxx,yyy,zzz")
 
     比如，你有一个 User 对象，你想为其增加 "修改" 和 "删除" 的操作，在模块类里你可以定义如下两个方法
-    {{{
+    {{{<JAVA>
     @At("/user/?")
     @GET
     public User getUser(int userId){
@@ -39,6 +42,12 @@
     public void deleteUser(int userId){
         // TODO 这里是实现代码
     }
+    
+    // 任意自选方法
+    @At(value="/user/?", method="fuck")
+    public void fuckUser(int userId){
+        // TODO 这里是实现代码
+    }
     }}}
 
     看，很简单，不是吗？
@@ -46,7 +55,7 @@
      # {#FF00FF; /user/?/topic/?}
      # {#FF00FF; /user/?/topic/*}
      # {#FF00FF; /*}
-    关于 "路径参数" 的具体的解释，请参看 [http_adaptor.man 适配器] > [http_adaptor.man#路径参数 路径参数]
+    关于 "路径参数" 的具体的解释，请参看 [http_adaptor.man 适配器]
 
     在一个入口函数上，你可以标注一个或多个下面的注解:
      * {#888888;* `@GET`}
@@ -63,6 +72,7 @@
     HTTP 请求，而另外一个入口函数不声明注解，用来处理余下的其他 HTTP 请求方法。当然，这两个入口
     函数的 @At 应该是一致的。
 
+    @since 1.r.63，标注了上述4个注解的方法，可以省略@At，此时，相当于标注了一个默认的@At
 
 
     

@@ -14,6 +14,7 @@ import org.nutz.mvc.ActionContext;
 import org.nutz.mvc.ActionInfo;
 import org.nutz.mvc.Mvcs;
 import org.nutz.mvc.NutConfig;
+import org.nutz.mvc.RequestPath;
 import org.nutz.mvc.UrlMapping;
 import org.nutz.mvc.annotation.BlankAtException;
 
@@ -21,28 +22,35 @@ public class UrlMappingImpl implements UrlMapping {
 
     private static final Log log = Logs.get();
 
-    private Map<String, ActionInvoker> map;// 这个对象有点多余,考虑换成AtMap吧!!
+    protected Map<String, ActionInvoker> map;// 这个对象有点多余,考虑换成AtMap吧!!
 
-    private MappingNode<ActionInvoker> root;
+    protected MappingNode<ActionInvoker> root;
+    
+    protected String prefix;
 
     public UrlMappingImpl() {
         this.map = new HashMap<String, ActionInvoker>();
         this.root = new MappingNode<ActionInvoker>();
     }
+    
+    public UrlMappingImpl(String prefix) {
+        this();
+        this.prefix = prefix;
+    }
 
     public void add(ActionChainMaker maker, ActionInfo ai, NutConfig config) {
 
-        //检查所有的path
+        // 检查所有的path
         String[] paths = ai.getPaths();
         for (int i = 0; i < paths.length; i++) {
             String path = paths[i];
             if (Strings.isBlank(path))
                 throw new BlankAtException(ai.getModuleType(), ai.getMethod());
-            
+
             if (path.charAt(0) != '/')
                 paths[i] = '/' + path;
         }
-        
+
         ActionChain chain = maker.eval(config, ai);
         for (String path : ai.getPaths()) {
 
@@ -56,6 +64,8 @@ public class UrlMappingImpl implements UrlMapping {
                 root.add(path, invoker);
                 // 记录一下方法与 url 的映射
                 config.getAtMap().addMethod(path, ai.getMethod());
+            } else if (!ai.isForSpecialHttpMethod()) {
+                log.warnf("Duplicate @At mapping ? path=" + path);
             }
 
             // 将动作链，根据特殊的 HTTP 方法，保存到调用者内部
@@ -68,9 +78,9 @@ public class UrlMappingImpl implements UrlMapping {
                 invoker.setDefaultChain(chain);
             }
         }
-        
+
         printActionMapping(ai);
-        
+
         // TODO 下面个IF要不要转换到NutLoading中去呢?
         // 记录一个 @At.key
         if (!Strings.isBlank(ai.getPathKey()))
@@ -78,23 +88,39 @@ public class UrlMappingImpl implements UrlMapping {
     }
 
     public ActionInvoker get(ActionContext ac) {
-        String path = Mvcs.getRequestPath(ac.getRequest());
+        RequestPath rp = Mvcs.getRequestPathObject(ac.getRequest());
+        String path = rp.getPath();
+        if (prefix != null)
+            path = path.substring(prefix.length());
+        ac.setSuffix(rp.getSuffix());
         ActionInvoker invoker = root.get(ac, path);
         if (invoker != null) {
             ActionChain chain = invoker.getActionChain(ac);
             if (chain != null) {
                 if (log.isDebugEnabled()) {
-                    log.debugf("Found mapping for [%s] path=%s : %s", ac.getRequest().getMethod(), path, chain);
+                    log.debugf("Found mapping for [%s] path=%s : %s",
+                               ac.getRequest().getMethod(),
+                               path,
+                               chain);
                 }
                 return invoker;
             }
         }
         if (log.isDebugEnabled())
-            log.debugf("Search mapping for path=%s : NOT Action match", path);
+            log.debugf("Search mapping for [%s] path=%s : NOT Action match", ac.getRequest().getMethod(), path);
         return null;
     }
-
+    
+    public void add(String path, ActionInvoker invoker) {
+    	root.add(path, invoker);
+    	map.put(path, invoker);
+    }
+    
     protected void printActionMapping(ActionInfo ai) {
+        print(ai);
+    }
+
+    protected void print(ActionInfo ai) {
 
         /*
          * 打印基本调试信息
@@ -114,17 +140,36 @@ public class UrlMappingImpl implements UrlMapping {
             Method method = ai.getMethod();
             String str;
             if (null != method)
-                str = String.format("%-30s : %-10s",Lang.simpleMetodDesc(method), method.getReturnType().getSimpleName());
+                str = genMethodDesc(ai);
             else
                 throw Lang.impossible();
-            log.debugf(    "%s >> %s | @Ok(%-5s) @Fail(%-5s) | by %d Filters | (I:%s/O:%s)",
-                        Strings.alignLeft(sb, 30, ' '),
-                        str,
-                        ai.getOkView(),
-                        ai.getFailView(),
-                        (null == ai.getFilterInfos() ? 0 : ai.getFilterInfos().length),
-                        ai.getInputEncoding(),
-                        ai.getOutputEncoding());
+            log.debugf("%s >> %50s | @Ok(%-5s) @Fail(%-5s) | by %d Filters | (I:%s/O:%s)",
+                       Strings.alignLeft(sb, 30, ' '),
+                       str,
+                       ai.getOkView(),
+                       ai.getFailView(),
+                       (null == ai.getFilterInfos() ? 0
+                                                   : ai.getFilterInfos().length),
+                       ai.getInputEncoding(),
+                       ai.getOutputEncoding());
         }
+    }
+    
+    protected String genMethodDesc(ActionInfo ai) {
+        Method method = ai.getMethod();
+        String prefix = "";
+        if (ai.getLineNumber() != null && ai.getLineNumber() > 0) {
+            prefix = String.format("(%s.java:%d).%s",
+                                 method.getDeclaringClass().getSimpleName(),
+                                 ai.getLineNumber(),
+                                 method.getName());
+        } else {
+            prefix = String.format("%s.%s(...)",
+                                   method.getDeclaringClass().getSimpleName(),
+                                   method.getName());
+        }
+        return String.format("%-37s : %-10s", 
+                             prefix,
+                             method.getReturnType().getSimpleName());
     }
 }

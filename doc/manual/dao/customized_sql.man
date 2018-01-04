@@ -28,6 +28,9 @@ Nutz.Dao 自定义 SQL 的概述
 		Sql sql = Sqls.create("DELETE FROM $table WHERE name=@name");
 		sql.vars().set("table","t_abc");
 		sql.params().set("name","Peter");
+		// 连写
+		sql.setVar("table","t_abc").setVar(...);
+		sql.setParam("name","Peter").setParam(...);
 		}}}
 		 * $table 将会被替换成 {#F0F;t_abc}
 		 * @name 将会被替换成 {#F0F;?}，用来创建 PreparedStatement
@@ -61,7 +64,10 @@ Sql 对象 -- org.nutz.dao.sql.Sql
          * fetchEntity
          * fetchInt
          * fetchString
+         * fetchRecord
          * queryEntity 
+         * queryRecord
+         * 其他等你发现
         方法来帮助你构建 Sql 对象。它们之间的区别在稍后会详细说明。
 		
 		通常的情况，你需要构建某些 {*动态} 的 SQL，所以我也允许你为你的 SQL 设置占位符，占位符分两种：
@@ -109,7 +115,7 @@ Sql 对象 -- org.nutz.dao.sql.Sql
         }}}
         即
          * 输入 "@@" 表示一个 '@'
-         * 输入 "$$$$" 表示一个 '$'
+         * 输入 "$$" 表示一个 '$'
 	
 	如何执行 Sql 对象
 		当你顺利的创建了一个 Sql 对象，执行它就相当简单了，比如：
@@ -162,7 +168,7 @@ Sql 对象 -- org.nutz.dao.sql.Sql
         
         为了更加详细的说明一下回调的用处，我们再下面这个例子：
         {{{<Java>
-        Sql.create("SELECT m.* FROM master m JOIN detail d ON m.d_id=d.d_id WHERE d.name='aa'");
+        Sql sql = Sqls.create("SELECT m.* FROM master m JOIN detail d ON m.d_id=d.d_id WHERE d.name='aa'");
         sql.setCallback(Sqls.callback.entities());
         sql.setEntity(dao.getEntity(Master.class));
         dao.execute(sql);
@@ -183,6 +189,30 @@ Sql 对象 -- org.nutz.dao.sql.Sql
         sql.addBatch();
         dao.execute(sql);
         }}}
+----------------------------------------------------------------------------------------------------        
+常用回调
+
+	Sqls.callback.XXX 提供了80%以上场景所需要的回调类型,在编写自定义回调之前,建议您先看看有没有现成的
+
+    ||   名称               ||   结果类型        || 备注                 ||
+    ||bool           || Boolean       ||              ||
+    ||bools          || `boolean[]`     ||1.r.62及之前的版本是LinkedArray||
+    ||doubleValue    || Double        ||              ||
+    ||entities       || `List<Pojo>`  ||取决于Entity对应的Pojo类  ||
+    ||entity         || Pojo          ||取决于Entity对应的Pojo类   ||
+    ||floatValue     || Float         ||              ||
+    ||integer        || Integer       ||              ||
+    ||ints           || `int[]`         ||              ||
+    ||longValue      || Long          ||              ||
+    ||longs          || `long[]`        ||              ||
+    ||map            || NutMap        ||与Record类型,但区分大小写 ||
+    ||maps           || `List<NutMap>`  ||              ||
+    ||record         || Record        ||字段名均为小写 ||
+    ||records        || `List<Record>`||              ||
+    ||str            || String        ||              ||
+    ||strList        || `List<String>`  ||              ||
+    ||strs           || `String[]`    ||              ||
+    ||timestamp      || TimeStamp     ||              ||
 ----------------------------------------------------------------------------------------------------
 Nutz.Dao SQL 文件的格式
 
@@ -218,7 +248,7 @@ Nutz.Dao SQL 文件的格式
 	
 	对于 Dao 接口的默认实现， org.nutz.dao.impl.NutDao，提供两个方法，一个是通过构造函数，另一个是 setter 函数。
 
-	在构造时加载
+	在构造时加载(示意代码,新建NutDao属于重量级操作,应使用单例或Ioc模式)
 		{{{<JAVA>
 		Dao dao = new NutDao(datasource,new FileSqlManager("demo/sqls/all.sqls"));
 		System.out.println(dao.sqls().count());
@@ -230,7 +260,7 @@ Nutz.Dao SQL 文件的格式
 		 * 如不是存在在 CLASSPATH 中的文件，则需要写上绝对路径。
 		 * 如果你给出的 path 是一个目录，那么该目录下所有后缀为{*.sqls} 的文件都会被加载
 
-	在构造之后的任何时加载
+	在构造之后的任何时加载(示意代码,新建NutDao属于重量级操作,应使用单例或Ioc模式)
 		{{{<JAVA>
 		Dao dao = new NutDao(datasource);
 		((NutDao)dao).setSqlManager(new FileSqlManager("demo/sqls/all.sqls"));
@@ -287,18 +317,18 @@ Nutz.Dao SQL 文件的格式
 	使用 `Entity<?>`
 		Nutz.Dao 会将你的 POJO 预先处理，处理的结果就是 `Entity<?>`。你可以通过 Dao 接口的 getEntity() 方法
 		获取。你通过[annotations.man 实体注解]配置的信息，尤其是 @Column 中配置的数据库字段的名字
-		（当数据库字段名同 Java 字段名不同时）尤其有用。Condition 接口的 `toString(Entity<?>)` 方法是你唯一
+		（当数据库字段名同 Java 字段名不同时）尤其有用。Condition 接口的 `toSql(Entity<?>)` 方法是你唯一
 		要实现的方法，如果你将一个 Condition 赋个了 Sql 对象，在生成真正 SQL 语句的时候，这个 `Entity<?>`
 		又要从那里来呢？答案是，(*你要预先设置}。
 		
-		如果你不设置 `Entity<?>`，那么你的 Condition 的 `toString(Entity<?>)` 参数就是 null。你可以通过 Dao
+		如果你不设置 `Entity<?>`，那么你的 Condition 的 `toSql(Entity<?>)` 参数就是 null。你可以通过 Dao
 		接口随时获取任何一个 POJO 的`Entity<?>`，但是如何设置给你的 Condition 呢，答案是，通过 Sql 对象。
 		{{{<JAVA>
 		void demoEntityCondition(Dao dao) {
 			Sql sql = Sqls.create("UPDATE t_pet SET masterid=@masterId $condition");
 			Entity<Pet> entity = dao.getEntity(Pet.class);
 			sql.setEntity(entity).setCondition(new Condition() {
-				public String toString(Entity<?> entity) {
+				public String toSql(Entity<?> entity) {
 					return String.format("%s LIKE 'Y%'", entity.getField("name").getColumnName());
 				}
 			});
@@ -343,13 +373,26 @@ Nutz.Dao SQL 文件的格式
 			}}}
 			
 			那么，我提供了一个 Sqls.queryEntity 函数也就不奇怪了吧。 :)
+			
+	多条件占位符(1.b.53开始提供)
+	
+		任意变量的值类型为Condition时,均自动识别为条件占位符
+		
+			{{{<JAVA>
+				Sql sql = Sqls.create("select * from user where id in (select id from vips $vip_cnd ) and name in (select name from girls $girl_cnd )");
+				sql.setVar("vip_cnd", Cnd.where("level", ">", 5));
+				sql.setVar("girl_cnd", Cnd.where("age", "<", 30));
+				sql.setCallback(Sqls.callback.records());
+				dao.execute(sql);
+			}}}
+			
+		注意事项: 如果调用过setEntity,那么对应的Cnd会进行属性名-字段名映射.
 	
 ------------------------------------------------------------------------------------------------
 分页
 
-	这是1.b.43才添加的功能!
+	对于不太复杂的sql, 分页还是需要的.
 	
-	一直被投诉,终于被实现!
 		{{{<JAVA>
 		Sql sql = Sqls.queryEntity("SELECT * FROM t_pet");
 		sql.setPager(dao.createPager(2,20));
@@ -357,6 +400,55 @@ Nutz.Dao SQL 文件的格式
 		dao.execute(sql);
 		return sql.getList(Pet.class);
 		}}}
-	提醒一下,SqlServer数据库下, 用于分页的sql对象,不要重复使用!!
-
+		
+	提醒一下, 用于分页的sql对象,不可重复使用!!
 	
+	若自动分页失败(例如生成的sql错误),那只能自行分页了.
+
+------------------------------------------------------------------------------------------------
+SQL内的数据库特殊注释
+
+    注释不可用单独一行.例如下面的例子,让SELECT与注释同一行,即可避免被当成sql的key进行处理.
+
+	{{{SQL
+	/* user.create */
+
+    /*+ALL+_ROWS*/ SELECT  
+    EMP_NO,EMP_NAM,DAT_IN 
+    FROM BSEMPMS 
+    WHERE EMP_NO=’SCOTT’
+	}}}
+
+------------------------------------------------------------------------------------------------
+安全性
+
+    基本原则,不允许把不可信数据(例如从网页表单获取的参数值)直接拼入SQL
+    
+    
+    
+    错误示例
+    {{{JAVA
+    
+    @At("/query")
+    public List<User> query(String city) {
+        Sql sql = Sqls.queryEntity("select * from t_user where city='" + city + "'"); // 随便就被注入了
+        sql.setEntity(dao.getEntity(User.class));
+        dao.execute(sql);
+        return sql.getList(User.class);
+    }
+    }}}
+    
+    正确用法
+    {{{JAVA
+    
+    @At("/query")
+    public List<User> query(String city) {
+        Sql sql = Sqls.queryEntity("select * from t_user where city=@city");//参数化
+        sql.setEntity(dao.getEntity(User.class));
+        sql.params().set("city", city);
+        dao.execute(sql);
+        return sql.getList(User.class);
+    }
+    }}}
+    
+    若需要拼入,那么请使用Sqls.escapeXXXXX系列方法,针对性地移除特殊字符,保障安全!!

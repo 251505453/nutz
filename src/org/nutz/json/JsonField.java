@@ -1,5 +1,6 @@
 package org.nutz.json;
 
+import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -9,9 +10,11 @@ import java.lang.annotation.Target;
  * Json字段的映射
  * 
  * @author zozoh(zozohtnt@gmail.com)
+ * @author 有心猴(belialofking@163.com)
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
+@Documented
 public @interface JsonField {
 
     String value() default "";
@@ -33,4 +36,9 @@ public @interface JsonField {
      * @see org.nutz.lang.util.Region
      */
     boolean forceString() default false;
+    
+    @Deprecated
+    String dateFormat() default "";
+    
+    String dataFormat() default "";
 }

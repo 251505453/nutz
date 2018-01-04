@@ -10,6 +10,11 @@ package org.nutz;
  * 
  */
 public final class Nutz {
+    
+    /**
+     * 标示类,没有new的可能性
+     */
+    Nutz() {}
 
     /**
      * 获取 Nutz 的版本号，版本号的命名规范
@@ -28,7 +33,30 @@ public final class Nutz {
      * @return nutz 项目的版本号
      */
     public static String version() {
-        return "1.b.51";
+        return String.format("%d.%s.%d-SNAPSHOT",
+                             majorVersion(),
+                             releaseLevel(),
+                             minorVersion());
     }
 
+    /**
+     * 大版本号
+     */
+    public static int majorVersion() {
+        return 1;
+    }
+
+    /**
+     * 发布流水
+     */
+    public static int minorVersion() {
+        return 65;
+    }
+
+    /**
+     * 质量号
+     */
+    public static String releaseLevel() {
+        return "r";
+    }
 }

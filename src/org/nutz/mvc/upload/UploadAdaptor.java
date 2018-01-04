@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.lang.reflect.Type;
-import java.util.List;
 import java.util.Map;
 
 import javax.servlet.ServletContext;
@@ -16,16 +15,15 @@ import org.nutz.filepool.NutFilePool;
 import org.nutz.lang.Lang;
 import org.nutz.log.Log;
 import org.nutz.log.Logs;
+import org.nutz.mvc.ActionInfo;
 import org.nutz.mvc.Mvcs;
 import org.nutz.mvc.adaptor.PairAdaptor;
 import org.nutz.mvc.adaptor.ParamInjector;
 import org.nutz.mvc.annotation.Param;
-import org.nutz.mvc.upload.injector.FileInjector;
-import org.nutz.mvc.upload.injector.FileMetaInjector;
 import org.nutz.mvc.upload.injector.InputStreamInjector;
-import org.nutz.mvc.upload.injector.MapListInjector;
 import org.nutz.mvc.upload.injector.MapSelfInjector;
 import org.nutz.mvc.upload.injector.ReaderInjector;
+import org.nutz.mvc.upload.injector.TempFileArrayInjector;
 import org.nutz.mvc.upload.injector.TempFileInjector;
 
 /**
@@ -58,6 +56,8 @@ import org.nutz.mvc.upload.injector.TempFileInjector;
  * @author wendal(wendal1985@gmail.com)
  * 
  * @see org.nutz.mvc.annotation.Param
+ * 
+ * @since 1.r.55开始使用与servlet 3.0+一致的Part接口,原方法标记为弃用.
  */
 public class UploadAdaptor extends PairAdaptor {
     private static final Log log = Logs.get();
@@ -88,13 +88,13 @@ public class UploadAdaptor extends PairAdaptor {
     }
 
     public UploadAdaptor(String path, int buffer, String charset, int poolSize) {
-        context = new UploadingContext(new NutFilePool(path, poolSize));
+        context = new UploadingContext(NutFilePool.getOrCreatePool(path, poolSize));
         context.setBufferSize(buffer);
         context.setCharset(charset);
     }
 
     public UploadAdaptor(String path, int buffer, String charset, int poolSize, int maxFileSize) {
-        context = new UploadingContext(new NutFilePool(path, poolSize));
+        context = new UploadingContext(NutFilePool.getOrCreatePool(path, poolSize));
         context.setBufferSize(buffer);
         context.setCharset(charset);
         context.setMaxFileSize(maxFileSize);
@@ -117,7 +117,8 @@ public class UploadAdaptor extends PairAdaptor {
     	return super.adapt(sc, req, resp, pathArgs);
     }
 
-    protected ParamInjector evalInjectorBy(Type type, Param param) {
+    @SuppressWarnings("deprecation")
+	protected ParamInjector evalInjectorBy(Type type, Param param) {
         // TODO 这里的实现感觉很丑, 感觉可以直接用type进行验证与传递
         // TODO 这里将Type的影响局限在了 github issue #30 中提到的局部范围
         Class<?> clazz = Lang.getTypeClass(type);
@@ -131,29 +132,32 @@ public class UploadAdaptor extends PairAdaptor {
         if (Map.class.isAssignableFrom(clazz))
             return new MapSelfInjector();
 
-        if (null == param)
-            return super.evalInjectorBy(type, null);
-
-        String paramName = param.value();
+        String pn = null == param ? getParamRealName(curIndex) : param.value();
 
         // File
         if (File.class.isAssignableFrom(clazz))
-            return new FileInjector(paramName);
+            return new org.nutz.mvc.upload.injector.FileInjector(pn);
         // FileMeta
         if (FieldMeta.class.isAssignableFrom(clazz))
-            return new FileMetaInjector(paramName);
+            return new org.nutz.mvc.upload.injector.FileMetaInjector(pn);
         // TempFile
         if (TempFile.class.isAssignableFrom(clazz))
-            return new TempFileInjector(paramName);
+            return new TempFileInjector(pn);
         // InputStream
         if (InputStream.class.isAssignableFrom(clazz))
-            return new InputStreamInjector(paramName);
+            return new InputStreamInjector(pn);
         // Reader
         if (Reader.class.isAssignableFrom(clazz))
-            return new ReaderInjector(paramName);
+            return new ReaderInjector(pn);
         // List
-        if (List.class.isAssignableFrom(clazz))
-            return new MapListInjector(paramName);
+        //if (List.class.isAssignableFrom(clazz)) {
+        //    if (!Strings.isBlank(paramName) && paramName.startsWith("::"))
+        //        return new ObjectNavlPairInjector(paramName.substring(2), type);
+        //    return new MapListInjector(paramName);
+        //}
+        if (TempFile[].class.isAssignableFrom(clazz)) {
+            return new TempFileArrayInjector(pn);
+        }
         // Other
         return super.evalInjectorBy(type, param);
     }
@@ -165,12 +169,12 @@ public class UploadAdaptor extends PairAdaptor {
         try {
             if (!"POST".equals(request.getMethod()) && !"PUT".equals(request.getMethod())) {
                 String str = "Not POST or PUT, Wrong HTTP method! --> " + request.getMethod();
-                throw Lang.makeThrow(IllegalArgumentException.class, str);
+                throw new UploadException(str);
             }
             // 看看是不是传统的上传
             String contentType = request.getContentType();
             if (contentType == null) {
-                throw Lang.makeThrow(IllegalArgumentException.class, "Content-Type is NULL!!");
+                throw new UploadException("Content-Type is NULL!!");
             }
             if (contentType.contains("multipart/form-data")) { // 普通表单上传
                 if (log.isDebugEnabled())
@@ -189,8 +193,7 @@ public class UploadAdaptor extends PairAdaptor {
             if (contentType.contains("application/x-www-form-urlencoded")) {
                 log.warn("Using form upload ? You forgot this --> enctype='multipart/form-data' ?");
             }
-            throw Lang.makeThrow(IllegalArgumentException.class, "Unknow Content-Type : "
-                                                                 + contentType);
+            throw new UploadException("Unknow Content-Type : "+ contentType);
         }
         catch (UploadException e) {
             throw Lang.wrapThrow(e);
@@ -198,5 +201,14 @@ public class UploadAdaptor extends PairAdaptor {
         finally {
             Uploads.removeInfo(request);
         }
+    }
+    
+    @Override
+    public void init(ActionInfo ai) {
+        if (this.method != null) {
+            // 如果ioc配置中设置为单例了,那应该提前报错!! 解决方法 singleton : false
+            throw new RuntimeException(new UploadException("Duplicate initialization is not allowed."));
+        }
+        super.init(ai);
     }
 }

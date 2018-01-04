@@ -22,10 +22,10 @@
 --------------------------------------------------------------------------------------------------------
 一个简单的例子
 	在这个例子中，你需要一 POJO，以及一个 JSON 配置文件。
-	例子的源代码，你可以访问 [http://nutzdemo.googlecode.com]  获取
+	例子的源代码，你可以访问 [http://nutzbook.wendal.net Nutzbook]  获取
 	
 	POJO 源代码
-		{{{
+		{{{<JAVA>
 		package nutz.demo.ioc.book;
 		
 		import java.util.Calendar;
@@ -73,7 +73,7 @@
 	
 	Json 配置文件
 		与 POJO 在同一包路径下
-		{{{
+		{{{<js>
 		/*
 		 * 开始写上 var ioc = { ， 是为了利用 eclipse 的  javascript 编辑器的自动格式化功能
 		 */
@@ -101,7 +101,7 @@
 		}}}
 		
 	调用代码
-		{{{
+		{{{<JAVA>
 		package nutz.demo.ioc.book;
 
 		import org.nutz.ioc.Ioc;
@@ -114,6 +114,7 @@
 				Ioc ioc = new NutIoc(new JsonLoader("nutz/demo/ioc/pet/pets.js"));
 				Pet pet = ioc.get(Pet.class, "xiaobai");
 				System.out.printf("%s - [%s]\n", pet.getName(), pet.getBirthday().getTimeZone().getID());
+				ioc.depose(); // 关闭ioc容器.
 			}
 
 		}
@@ -124,7 +125,7 @@
 		}}}
 	
 	如果配置文件中声明了类型，则可不传入类型
-		{{{
+		{{{<JAVA>
 		Pet xh = ioc.get(null, "xiaohei");
 		System.out.printf("%s's friend is %s\n", xh.getName(), xh.getFriend().getName());
 		}}}
@@ -134,7 +135,7 @@
 		}}}
 	
 	声明了 singleton: false，那么它每次获取，都会生成一个新的实例
-		{{{
+		{{{<JAVA>
 		Pet p1 = ioc.get(null, "xiaohei");
 		Pet p2 = ioc.get(null, "xiaohei");
 		System.out.println(p1==p2);
@@ -160,3 +161,68 @@
 	 * [xml_ioc_loader.man 使用XML作为配置文件格式] -- 使用XML作为配置文件格式
 	 * [loader_annotation.man 使用注解配置Ioc] --使用注解配置Ioc
 	 * [../aop/aop_json.man 用json文件声明Aop切片] -- 在json配置文件中声明Aop及声明式事务
+	 
+--------------------------------------------------------------------------------------------------------
+关于工厂方法
+
+	从1.b.51开始, nutz内置的json/xml/annotation加载器支持工厂方法了
+	
+	Json写法是
+	
+	{{{<JAVA>
+		{
+			// 根据静态方法构建对象
+			ssdb : {
+				type : "org.nutz.ssdbj4.spi.SSDB", // 接口或抽象类
+				args : ["127.0.0.1", 8888, 5000, null],
+				factory : "org.nutz.ssdbj4.SSDBs#pool" // 类名#方法名
+			},
+			// 用另外一个bean的实例方法构建对象
+			yyy : {
+				args : "abc",
+				factory : "$ssdb#batch" // $对象名称#方法名
+			}
+		}
+	}}}
+	
+	XML写法是
+	
+	{{{
+		<ioc>
+			<obj name="ssdb" type="org.nutz.ssdbj4.spi.SSDB" factory="org.nutz.ssdbj4.SSDBs#pool">
+				<args>
+					<str>127.0.0.1</refer>
+					<int>8888</int>
+					<int>5000</int>
+				</args>
+			</obj>
+		</ioc>
+	}}}
+
+--------------------------------------------------------------------------------------------------------
+可选属性
+
+	从1.b.51开始, nutz内置的json/xml/annotation加载器支持可选属性了
+	
+	有时候,某些服务即使不存在也不会影响系统的运行,但这些属性又是ioc配置好的,这时就需要可选属性了
+	
+	注解的写法是
+	
+	{{{<JAVA>
+		@IocBean
+		public class MqttService {
+		
+			@Inject(optional=true)
+			protect Dao dao;
+			
+			@Inject
+			protect MqttClient client;
+			
+			public void publish(String topic, Object data) {
+				if (dao != null) { // 有就记录,没有就算了呗
+					dao.insert(new MqttHistory(topic, String.value(data));
+				}
+				client.publish(topic, data);
+			}
+		}
+	}}}

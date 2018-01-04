@@ -21,7 +21,7 @@ public abstract class Exps {
     public static Like like(String name, String value) {
         return Like.create(name, value, true);
     }
-
+    
     public static Like like(String name, String value, boolean ignoreCase) {
         return Like.create(name, value, ignoreCase);
     }
@@ -33,23 +33,23 @@ public abstract class Exps {
     public static SimpleExpression eq(String name, Object val) {
         return new SimpleExpression(name, "=", val);
     }
-
+    
     public static SimpleExpression gt(String name, long val) {
         return new SimpleExpression(name, ">", val);
     }
-
+    
     public static SimpleExpression lt(String name, long val) {
         return new SimpleExpression(name, "<", val);
     }
-
+    
     public static SimpleExpression gte(String name, long val) {
         return new SimpleExpression(name, ">=", val);
     }
-
+    
     public static SimpleExpression lte(String name, long val) {
         return new SimpleExpression(name, "<=", val);
     }
-
+    
     public static IntRange inInt(String name, int... ids) {
         return new IntRange(name, ids);
     }
@@ -64,6 +64,14 @@ public abstract class Exps {
 
     public static SqlRange inSql(String name, String subSql, Object... args) {
         return new SqlRange(name, subSql, args);
+    }
+
+    public static SqlValueRange inSql2(String name, String subSql, Object... values) {
+        return new SqlValueRange(name, subSql, values);
+    }
+
+    public static SqlValueRange inSql2(String name, String subSql, Collection<?> collection) {
+        return new SqlValueRange(name, subSql, collection.toArray());
     }
 
     public static SqlExpression create(String name, String op, Object value) {
@@ -86,8 +94,12 @@ public abstract class Exps {
         else if ("IN".equals(op) || "NOT IN".equals(op)) {
             Class<?> type = value.getClass();
             SqlExpression re;
+            int len = Lang.eleSize(value);
+            if (len < 1) { // 如果空数组/空集合,则返回 @sinec 1.r.57
+                re = new Static("1 != 1");
+            }
             // 数组
-            if (type.isArray()) {
+            else if (type.isArray()) {
                 re = _evalRange((Mirror<?>) Mirror.me(type.getComponentType()), name, value);
             }
             // 集合
@@ -123,6 +135,9 @@ public abstract class Exps {
         // !=
         else if ("!=".equals(op) || "<>".equals(op)) {// TODO 检查一下,原本是&&, 明显永远成立
             return eq(name, value).setNot(true);
+        } else if ("BETWEEN".equals(op)) {
+        	Object[] values = (Object[])value;
+        	return new BetweenExpression(name, values[0], values[1]);
         }
         // Others
         return new SimpleExpression(name, op, value);

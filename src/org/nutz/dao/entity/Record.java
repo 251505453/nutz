@@ -5,11 +5,13 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 
 import org.nutz.castor.Castors;
 import org.nutz.dao.Chain;
@@ -17,6 +19,7 @@ import org.nutz.dao.DaoException;
 import org.nutz.json.Json;
 import org.nutz.json.JsonFormat;
 import org.nutz.lang.Lang;
+import org.nutz.lang.util.NutMap;
 
 /**
  * 记录对象
@@ -24,13 +27,12 @@ import org.nutz.lang.Lang;
  * @author zozoh(zozohtnt@gmail.com)
  * @author wendal(wendal1985@gmail.com)
  */
-public class Record implements Map<String, Object>, java.io.Serializable {
+public class Record implements Map<String, Object>, java.io.Serializable, Cloneable, Comparable<Record> {
 
-    /**
-     * @author mawenming at Jan 11, 2011 2:20:09 PM
-     */
-    private static final long serialVersionUID = 4614645901639942051L;
-
+    private static final long serialVersionUID = -7753504263747912181L;
+    
+    protected static Callable<Record> factory;
+    
     /**
      * 根据 ResultSet 创建一个记录对象
      * 
@@ -39,51 +41,54 @@ public class Record implements Map<String, Object>, java.io.Serializable {
      * @return 记录对象
      */
     public static Record create(ResultSet rs) {
-    	String name = null;
-    	int i = 0;
+    	Record re = create();
+    	create(re, rs, null);
+    	return re;
+    }
+    
+    public static void create(Map<String, Object> re, ResultSet rs, ResultSetMetaData meta) {
+        String name = null;
+        int i = 0;
         try {
-            Record re = new Record();
-            ResultSetMetaData meta = rs.getMetaData();
+            if (meta == null)
+                meta = rs.getMetaData();
             int count = meta.getColumnCount();
             for (i = 1; i <= count; i++) {
                 name = meta.getColumnLabel(i);
                 switch (meta.getColumnType(i)) {
                 case Types.TIMESTAMP: {
-                    re.set(name, rs.getTimestamp(i));
+                    re.put(name, rs.getTimestamp(i));
                     break;
                 }
                 case Types.DATE: {// ORACLE的DATE类型包含时间,如果用默认的只有日期没有时间 from
                                     // cqyunqin
-                    re.set(name, rs.getTimestamp(i));
+                    re.put(name, rs.getTimestamp(i));
                     break;
                 }
                 case Types.CLOB: {
-                    re.set(name, rs.getString(i));
+                    re.put(name, rs.getString(i));
                     break;
                 }
                 default:
-                    re.set(name, rs.getObject(i));
+                    re.put(name, rs.getObject(i));
                     break;
                 }
-                re.setSqlType(name, meta.getColumnType(i));
             }
-            return re;
         }
         catch (SQLException e) {
-        	if (name != null) {
-        		throw new DaoException(String.format("Column Name=%s, index=%d", name, i), e);
-        	}
+            if (name != null) {
+                throw new DaoException(String.format("Column Name=%s, index=%d", name, i), e);
+            }
             throw new DaoException(e);
         }
     }
 
     private Map<String, Object> map;
-
-    private Map<String, Integer> sqlTypeMap;
+    private List<String> keys;
 
     public Record() {
         map = new LinkedHashMap<String, Object>();
-        sqlTypeMap = new HashMap<String, Integer>();
+        keys = new ArrayList<String>();
     }
 
     /**
@@ -97,6 +102,7 @@ public class Record implements Map<String, Object>, java.io.Serializable {
      */
     public Record set(String name, Object value) {
         map.put(name.toLowerCase(), value);
+        keys.add(name);
         return this;
     }
 
@@ -108,6 +114,7 @@ public class Record implements Map<String, Object>, java.io.Serializable {
      * @return 移除的字段值
      */
     public Object remove(String name) {
+        keys.remove(name);
         return map.remove(name.toLowerCase());
     }
 
@@ -139,14 +146,48 @@ public class Record implements Map<String, Object>, java.io.Serializable {
      * @return 指定字段名的 int 值。如果该字段在记录中不存在，返回 -1；如果该字段的值不是 int 类型，返回 -1
      */
     public int getInt(String name) {
+        return getInt(name, -1);
+    }
+    
+    public int getInt(String name, int dft) {
         try {
             Object val = get(name);
             if (null == val)
-                return -1;
+                return dft;
             return Castors.me().castTo(val, int.class);
         }
         catch (Exception e) {}
-        return -1;
+        return dft;
+    }
+    
+    public long getLong(String name) {
+        return getLong(name, -1);
+    }
+    
+    public long getLong(String name, long dft) {
+        try {
+            Object val = get(name);
+            if (null == val)
+                return dft;
+            return Castors.me().castTo(val, long.class);
+        }
+        catch (Exception e) {}
+        return dft;
+    }
+    
+    public double getDouble(String name) {
+        return getDouble(name, -1);
+    }
+    
+    public double getDouble(String name, double dft) {
+        try {
+            Object val = get(name);
+            if (null == val)
+                return dft;
+            return Castors.me().castTo(val, double.class);
+        }
+        catch (Exception e) {}
+        return dft;
     }
 
     /**
@@ -198,7 +239,7 @@ public class Record implements Map<String, Object>, java.io.Serializable {
      * @return 该记录 JSON 格式的字符串表示
      */
     public String toString() {
-        return Json.toJson(map);
+        return Json.toJson(map, JsonFormat.full());
     }
 
     /**
@@ -215,12 +256,17 @@ public class Record implements Map<String, Object>, java.io.Serializable {
     public <T> T toEntity(Entity<T> en) {
         return en.getObject(this);
     }
+    
+    public <T> T toEntity(Entity<T> en, String prefix) {
+        return en.getObject(this, prefix);
+    }
 
     /**
      * 从记录中移除所有字段与值的对应关系
      */
     public void clear() {
         map.clear();
+        keys.clear();
     }
 
     /**
@@ -303,12 +349,13 @@ public class Record implements Map<String, Object>, java.io.Serializable {
      * @return 该字段之前所对应的值；如果之前该字段在该记录中不存在，则返回 null
      */
     public Object put(String name, Object value) {
+        keys.add(name);
         return map.put(name.toLowerCase(), value);
     }
 
     public void putAll(Map<? extends String, ? extends Object> out) {
         for (Entry<? extends String, ? extends Object> entry : out.entrySet())
-            map.put(entry.getKey().toLowerCase(), entry.getValue());
+            put(entry.getKey(), entry.getValue());
     }
 
     /**
@@ -348,29 +395,41 @@ public class Record implements Map<String, Object>, java.io.Serializable {
     public Chain toChain() {
         return Chain.from(map);
     }
-
-    // ===========================================
-
-    /**
-     * 返回该字段对应的数据库类型
-     * 
-     * @param name
-     *            字段名
-     * @return 该字段对应的数据库类型
-     */
-    public int getSqlType(String name) {
-        return sqlTypeMap.get(name.toLowerCase());
+    
+    public Record clone() {
+        Record re = create();
+        re.putAll(this);
+        return re;
+    }
+    
+    public Map<String, Object> sensitive() {
+        NutMap map = new NutMap();
+        for (String key : keys) {
+            map.put(key, get(key));
+        }
+        return map;
     }
 
-    /**
-     * 设置该字段对应的数据库类型
-     * 
-     * @param name
-     *            字段名
-     * @param value
-     *            数据库类型
-     */
-    protected void setSqlType(String name, int value) {
-        sqlTypeMap.put(name.toLowerCase(), value);
+    public int compareTo(Record re) {
+        if (re == null)
+            return 1;
+        if (re.size() == this.size())
+            return 0;
+        return re.size() > this.size() ? -1 : 1;
+    }
+    
+    public static void setFactory(Callable<Record> factory) {
+        Record.factory = factory;
+    }
+    
+    public static Record create() {
+        if (factory != null)
+            try {
+                return factory.call();
+            }
+            catch (Exception e) {
+                throw Lang.wrapThrow(e);
+            }
+        return new Record();
     }
 }

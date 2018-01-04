@@ -8,10 +8,20 @@ import org.nutz.lang.Times;
 public class RegionTest {
 
     @Test
+    public void test_gt_lt() {
+        assertFalse(Region.Int("(,2)").match(3));
+        assertTrue(Region.Int("(1,2]").match(2));
+        assertTrue(Region.Int("[2,)").match(3));
+    }
+
+    @Test
     public void test_equals() {
-        assertFalse(Region.Int("(2)").match(1));
-        assertTrue(Region.Int("(2)").match(2));
-        assertFalse(Region.Int("(2)").match(3));
+        assertFalse(Region.Int("[2)").match(1));
+        assertTrue(Region.Int("[2]").match(2));
+        assertFalse(Region.Int("(2]").match(3));
+        assertTrue(Region.Int("(2)").match(3));
+        assertFalse(Region.Int("(2)").match(2));
+        assertTrue(Region.Int("(2)").match(1));
     }
 
     @Test

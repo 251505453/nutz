@@ -6,6 +6,7 @@ import org.nutz.Nutzs;
 import org.nutz.dao.Dao;
 import org.nutz.dao.test.meta.Pojos;
 import org.nutz.ioc.Ioc;
+import org.nutz.trans.Trans;
 
 public abstract class DaoCase {
 
@@ -15,7 +16,9 @@ public abstract class DaoCase {
 
     @Before
     public void setUp() {
-        ioc = Nutzs.getIoc("org/nutz/dao/test/meta/pojo.js");
+        Trans.DEBUG = false;
+        Nutzs.checkProperties();
+        ioc = Nutzs.getIoc("config/dao-test.js");
         dao = ioc.get(Dao.class, "dao");
         pojos = ioc.get(Pojos.class, "metas");
         before();

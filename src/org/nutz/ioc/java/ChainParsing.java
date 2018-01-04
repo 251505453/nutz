@@ -32,11 +32,22 @@ public class ChainParsing {
         parse();
     }
 
+    //记录递归层数
+    private int recursiveCount = 0;
+
     private void parse() {
+        recursiveCount++;
         for (; i < cs.length; i++) {
             char c = cs[i];
             if (c == ',') {
                 checkIfNeedAddNode();
+            }
+            // 属性
+            else if (null != first && c == '.') {
+                String fn = clearStringBuffer();
+                if (!Strings.isBlank(fn)) {
+                    addNode(new FieldNode(fn));
+                }
             }
             // String
             else if (c == '\'' || c == '"') {
@@ -51,20 +62,30 @@ public class ChainParsing {
             }
             // @Ioc | @Context | @Name
             else if (c == '@') {
-                String name = readToDot().toUpperCase();
-                if ("IOC".equals(name)) {
-                    addNode(new IocSelfNode());
-                } else if ("CONTEXT".equals(name)) {
-                    addNode(new IocContextNode());
-                } else if ("NAME".equals(name)) {
-                    addNode(new IocObjectNameNode());
+                if (recursiveCount > 1 && hasFieldOrFunction()) {//正在解析参数 并且 参数是对象获取属性或调用方法
+                    String strNodes = "@" + readToComma();
+                    addNode(new ChainParsing(strNodes).getNode());
+                } else {
+                    String name = readToDot().toUpperCase();
+                    if ("IOC".equals(name)) {
+                        addNode(new IocSelfNode());
+                    } else if ("CONTEXT".equals(name)) {
+                        addNode(new IocContextNode());
+                    } else if ("NAME".equals(name)) {
+                        addNode(new IocObjectNameNode());
+                    }
                 }
                 continue;
             }
             // $xxx
             else if (c == '$') {
-                String name = readToDot();
-                addNode(new IocObjectNode(name));
+                if (recursiveCount > 1 && hasFieldOrFunction()) {//正在解析参数 并且 参数是对象获取属性或调用方法
+                    String strNodes = "$" + readToComma();
+                    addNode(new ChainParsing(strNodes).getNode());
+                } else {
+                    String name = readToDot();
+                    addNode(new IocObjectNode(name));
+                }
                 continue;
             }
             // (...) in func
@@ -77,11 +98,18 @@ public class ChainParsing {
                 ends.popLast();
                 ChainNode[] args = argss.popLast().toArray();
                 int pos = funcName.lastIndexOf('.');
+                // 嗯... 看来是静态方法调用 ...
                 if (pos > 0) {
                     String className = funcName.substring(0, pos);
                     funcName = funcName.substring(pos + 1);
                     addNode(new StaticFunctionNode(className, funcName, args));
-                } else {
+                }
+                // 前面节点如果为 (...)，那么 . 会被计入
+                else if (pos == 0) {
+                    addNode(new ObjectFunctionNode(funcName.substring(1), args));
+                }
+                // 简直就是一个方法调用
+                else {
                     addNode(new ObjectFunctionNode(funcName, args));
                 }
                 clearStringBuffer();
@@ -91,12 +119,30 @@ public class ChainParsing {
                 checkIfNeedAddNode();
                 return;
             }
+            //
+            else if(c==')'&&i==cs.length-1){
+                return;
+            }
             // xxx.xxx.xxx
             else {
                 sb.append(c);
             }
         }
+        recursiveCount--;
         checkIfNeedAddNode();
+    }
+
+    //对象在参数中，是否后续获取属性或调用方法
+    private boolean hasFieldOrFunction() {
+        int dot = 0, comma = 0;
+        for (int currentIndex = i; currentIndex < cs.length; currentIndex++) {
+            char c = cs[currentIndex];
+            if (c == '.')
+                dot = currentIndex;
+            if (c == ',')
+                comma = currentIndex;
+        }
+        return dot < comma || (dot != 0 && comma == 0);//点号在逗号前边或后边有点号没有逗号
     }
 
     private void checkIfNeedAddNode() {
@@ -112,7 +158,7 @@ public class ChainParsing {
                 addNode(new BooleanNode(s));
             }
             // number
-            else if (s.matches("^([0-9]+)$")) {
+            else if (s.matches("^([-]?[0-9]+)?([.][0-9]+)?([fL]?)$")) {
                 addNode(new NumberNode(s));
             }
             // the chain is empty
@@ -122,7 +168,9 @@ public class ChainParsing {
                     throw Lang.makeThrow("Don't know how to invoke '%s'", s);
                 String className = s.substring(0, pos);
                 String funcName = s.substring(pos + 1);
-                addNode(new StaticFunctionNode(className, funcName, new ChainNode[0]));
+                addNode(new StaticFunctionNode(className,
+                        funcName,
+                        new ChainNode[0]));
             }
             // some node had been built
             else {
@@ -135,6 +183,16 @@ public class ChainParsing {
         for (i++; i < cs.length; i++) {
             char c = cs[i];
             if (c == '.' || c == ',')
+                break;
+            sb.append(c);
+        }
+        return clearStringBuffer();
+    }
+
+    private String readToComma() {
+        for (i++; i < cs.length; i++) {
+            char c = cs[i];
+            if (c == ',' || c == ')')
                 break;
             sb.append(c);
         }

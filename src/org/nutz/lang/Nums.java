@@ -1,5 +1,6 @@
 package org.nutz.lang;
 
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -8,6 +9,96 @@ import java.util.regex.Pattern;
  * @author zozoh(zozohtnt@gmail.com)
  */
 public abstract class Nums {
+
+    /**
+     * 计算尺寸
+     * 
+     * @param v
+     *            要计算的尺寸值的类型可以是
+     *            <ul>
+     *            <li>500 - 整数，直接返回
+     *            <li>.12 - 浮点，相当于一个百分比，可以大于 1.0
+     *            <li>"12%" - 百分比，相当于 .12
+     *            </ul>
+     * @param base
+     *            百分比的基数
+     * 
+     * @return 根据基数计算后的数值
+     */
+    public static double dimension(String v, double base) {
+        // 试试整型
+        try {
+            Integer nb = Integer.valueOf(v);
+            return nb.intValue();
+        }
+        catch (NumberFormatException e) {}
+
+        // 试试浮点
+        try {
+            Double nb = Double.valueOf(v);
+            return nb.doubleValue() * base;
+        }
+        catch (NumberFormatException e) {}
+
+        // 百分比
+        Pattern p = Pattern.compile("^([0-9.]{1,})%$");
+        Matcher m = p.matcher(v);
+        if (m.find()) {
+            Double nb = Double.valueOf(m.group(1));
+            return (nb.doubleValue() / 100) * base;
+        }
+        // 靠不知道是啥
+        throw Lang.makeThrow("fail to dimension : " + v);
+    }
+
+    /**
+     * @see #dimension(String, double)
+     */
+    public static int dimension(String v, int base) {
+        return (int) (dimension(v, (double) base));
+    }
+
+    /**
+     * @param nbs
+     *            一组数字
+     * @return 数字之和
+     */
+    public static int sum(int... nbs) {
+        int re = 0;
+        for (int nb : nbs)
+            re += nb;
+        return re;
+    }
+
+    /**
+     * 一个数的字面量的进制和值
+     */
+    public static class Radix {
+        Radix(String val, int radix) {
+            this.val = val;
+            this.radix = radix;
+        }
+
+        public int radix;
+        public String val;
+    }
+
+    /**
+     * @param str
+     *            数字的字符串
+     * @return 字符串的进制
+     * 
+     * @see org.nutz.lang.Nums.Radix
+     */
+    public static Radix evalRadix(String str) {
+        if (str.startsWith("0x"))
+            return new Radix(str.substring(2), 16);
+        if (str.startsWith("0") && str.length() > 1)
+            return new Radix(str.substring(1), 8);
+        if (str.startsWith("0b"))
+            return new Radix(str.substring(2), 2);
+        return new Radix(str, 10);
+    }
 
     /**
      * 将一个字符串变成一个整型数组，如果字符串不符合规则，对应的元素为 -1 <br>
@@ -87,7 +178,7 @@ public abstract class Nums {
     }
 
     /**
-     * 将一个字符串变成一个布尔数组，如果字符串不符合规则，对应的元素为 false
+     * 将一个字符串变成一个双精度数数组，如果字符串不符合规则，对应的元素为 -1
      * 
      * @param str
      *            半角逗号分隔的数字字符串
@@ -119,8 +210,7 @@ public abstract class Nums {
         boolean[] ns = new boolean[ss.length];
         for (int i = 0; i < ns.length; i++) {
             try {
-                ns[i] = Pattern.matches("^(1|yes|true|on)$",
-                                        ss[i].toLowerCase());
+                ns[i] = Pattern.matches("^(1|yes|true|on)$", ss[i].toLowerCase());
             }
             catch (NumberFormatException e) {
                 ns[i] = false;
@@ -130,13 +220,24 @@ public abstract class Nums {
     }
 
     /**
-     * @param arr
-     * @param v
-     * @return 第一个匹配元素的下标
+     * @see #indexOf(int[], int, int)
      */
     public static int indexOf(int[] arr, int v) {
+        return indexOf(arr, v, 0);
+    }
+
+    /**
+     * @param arr
+     *            数组
+     * @param v
+     *            值
+     * @param off
+     *            从那个下标开始搜索(包含)
+     * @return 第一个匹配元素的下标
+     */
+    public static int indexOf(int[] arr, int v, int off) {
         if (null != arr)
-            for (int i = 0; i < arr.length; i++) {
+            for (int i = off; i < arr.length; i++) {
                 if (arr[i] == v)
                     return i;
             }
@@ -146,7 +247,7 @@ public abstract class Nums {
     /**
      * @param arr
      * @param v
-     * @return 第一个匹配元素的下标
+     * @return 最后一个匹配元素的下标
      */
     public static int lastIndexOf(int[] arr, int v) {
         if (null != arr)
@@ -158,13 +259,29 @@ public abstract class Nums {
     }
 
     /**
-     * @param arr
-     * @param v
-     * @return 第一个匹配元素的下标
+     * @see #indexOf(char[], char, int)
      */
     public static int indexOf(char[] arr, char v) {
         if (null != arr)
             for (int i = 0; i < arr.length; i++) {
+                if (arr[i] == v)
+                    return i;
+            }
+        return -1;
+    }
+
+    /**
+     * @param arr
+     *            数组
+     * @param v
+     *            值
+     * @param off
+     *            从那个下标开始搜索(包含)
+     * @return 第一个匹配元素的下标
+     */
+    public static int indexOf(char[] arr, char v, int off) {
+        if (null != arr)
+            for (int i = off; i < arr.length; i++) {
                 if (arr[i] == v)
                     return i;
             }
@@ -186,13 +303,24 @@ public abstract class Nums {
     }
 
     /**
-     * @param arr
-     * @param v
-     * @return 第一个匹配元素的下标
+     * @see #indexOf(long[], long, int)
      */
     public static int indexOf(long[] arr, long v) {
+        return indexOf(arr, v, 0);
+    }
+
+    /**
+     * @param arr
+     *            数组
+     * @param v
+     *            值
+     * @param off
+     *            从那个下标开始搜索(包含)
+     * @return 第一个匹配元素的下标
+     */
+    public static int indexOf(long[] arr, long v, int off) {
         if (null != arr)
-            for (int i = 0; i < arr.length; i++) {
+            for (int i = off; i < arr.length; i++) {
                 if (arr[i] == v)
                     return i;
             }

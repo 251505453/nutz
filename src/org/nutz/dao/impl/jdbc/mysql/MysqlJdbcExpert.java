@@ -1,27 +1,39 @@
 package org.nutz.dao.impl.jdbc.mysql;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 
 import org.nutz.dao.DB;
 import org.nutz.dao.Dao;
 import org.nutz.dao.Sqls;
 import org.nutz.dao.entity.Entity;
+import org.nutz.dao.entity.LinkField;
 import org.nutz.dao.entity.MappingField;
 import org.nutz.dao.entity.PkType;
 import org.nutz.dao.entity.annotation.ColType;
-import org.nutz.dao.impl.entity.macro.SqlFieldMacro;
 import org.nutz.dao.impl.jdbc.AbstractJdbcExpert;
 import org.nutz.dao.jdbc.JdbcExpertConfigFile;
+import org.nutz.dao.jdbc.ValueAdaptor;
 import org.nutz.dao.pager.Pager;
 import org.nutz.dao.sql.Pojo;
 import org.nutz.dao.sql.Sql;
 import org.nutz.dao.util.Pojos;
+import org.nutz.log.Log;
+import org.nutz.log.Logs;
 
 public class MysqlJdbcExpert extends AbstractJdbcExpert {
 
-    private static final String META_ENGINE = "mysql-engine";
+    protected static final String META_ENGINE = "mysql-engine";
 
-    private static final String META_CHARSET = "mysql-charset";
+    protected static final String META_CHARSET = "mysql-charset";
+    
+    protected static final String META_INTLEN = "mysql-intlen";
+
+    private static final Log log = Logs.get();
 
     public MysqlJdbcExpert(JdbcExpertConfigFile conf) {
         super(conf);
@@ -35,9 +47,7 @@ public class MysqlJdbcExpert extends AbstractJdbcExpert {
         Pager pager = pojo.getContext().getPager();
         // 需要进行分页
         if (null != pager && pager.getPageNumber() > 0)
-            pojo.append(Pojos.Items.wrapf(" LIMIT %d, %d",
-                                          pager.getOffset(),
-                                          pager.getPageSize()));
+            pojo.append(Pojos.Items.wrapf(" LIMIT %d, %d", pager.getOffset(), pager.getPageSize()));
     }
 
     public void formatQuery(Sql sql) {
@@ -50,38 +60,44 @@ public class MysqlJdbcExpert extends AbstractJdbcExpert {
                                              pager.getPageSize()));
     }
 
-    @Override
-    protected String evalFieldType(MappingField mf) {
+    public String evalFieldType(MappingField mf) {
         if (mf.getCustomDbType() != null)
             return mf.getCustomDbType();
+        int intLen = 4;
+        if (mf.getEntity().hasMeta(META_INTLEN)) {
+        	intLen = ((Number)mf.getEntity().getMeta(META_INTLEN)).intValue();
+        }
         // Mysql 的精度是按照 bit
         if (mf.getColumnType() == ColType.INT) {
             int width = mf.getWidth();
             if (width <= 0) {
                 return "INT(32)";
             } else if (width <= 2) {
-                return "TINYINT(" + (width * 4) + ")";
+                return "TINYINT(" + (width * intLen) + ")";
             } else if (width <= 4) {
-                return "MEDIUMINT(" + (width * 4) + ")";
+                return "MEDIUMINT(" + (width * intLen) + ")";
             } else if (width <= 8) {
-                return "INT(" + (width * 4) + ")";
+                return "INT(" + (width * intLen) + ")";
             }
-            return "BIGINT(" + (width * 4) + ")";
+            return "BIGINT(" + (width * intLen) + ")";
         }
         if (mf.getColumnType() == ColType.BINARY) {
             return "MediumBlob"; // 默认用16M的应该可以了吧?
+        }
+        if (mf.getColumnType() == ColType.MYSQL_JSON) {
+            return "JSON";
         }
         // 其它的参照默认字段规则 ...
         return super.evalFieldType(mf);
     }
 
     public boolean createEntity(Dao dao, Entity<?> en) {
-        StringBuilder sb = new StringBuilder("CREATE TABLE "
-                                             + en.getTableName()
-                                             + "(");
+        StringBuilder sb = new StringBuilder("CREATE TABLE " + en.getTableName() + "(");
         // 创建字段
         for (MappingField mf : en.getMappingFields()) {
-            sb.append('\n').append(mf.getColumnName());
+            if (mf.isReadonly())
+                continue;
+            sb.append('\n').append(mf.getColumnNameInSql());
             sb.append(' ').append(evalFieldType(mf));
             // 非主键的 @Name，应该加入唯一性约束
             if (mf.isName() && en.getPkType() != PkType.NAME) {
@@ -114,16 +130,12 @@ public class MysqlJdbcExpert extends AbstractJdbcExpert {
                     }
                 } else {
                     if (mf.hasDefaultValue())
-                        sb.append(" DEFAULT '")
-                          .append(getDefaultValue(mf))
-                          .append("'");
+                        addDefaultValue(sb, mf);
                 }
             }
 
             if (mf.hasColumnComment()) {
-                sb.append(" COMMENT '")
-                  .append(mf.getColumnComment())
-                  .append("'");
+                sb.append(" COMMENT '").append(mf.getColumnComment()).append("'");
             }
 
             sb.append(',');
@@ -134,7 +146,7 @@ public class MysqlJdbcExpert extends AbstractJdbcExpert {
             sb.append('\n');
             sb.append("PRIMARY KEY (");
             for (MappingField pk : pks) {
-                sb.append(pk.getColumnName()).append(',');
+                sb.append(pk.getColumnNameInSql()).append(',');
             }
             sb.setCharAt(sb.length() - 1, ')');
             sb.append("\n ");
@@ -174,9 +186,83 @@ public class MysqlJdbcExpert extends AbstractJdbcExpert {
     }
 
     public Pojo fetchPojoId(Entity<?> en, MappingField idField) {
-        String autoSql = "SELECT @@@@IDENTITY";
-        Pojo autoInfo = new SqlFieldMacro(idField, autoSql);
-        autoInfo.setEntity(en);
-        return autoInfo;
+        // String autoSql = "SELECT @@@@IDENTITY";
+        // Pojo autoInfo = new SqlFieldMacro(idField, autoSql);
+        // autoInfo.setEntity(en);
+        // return autoInfo;
+        return null;
+    }
+
+    @Override
+    public ValueAdaptor getAdaptor(MappingField ef) {
+        if (ColType.MYSQL_JSON == ef.getColumnType()) {
+            return new MysqlJsonAdaptor();
+        } else {
+            return super.getAdaptor(ef);
+        }
+    }
+
+    @Override
+    public void checkDataSource(Connection conn) throws SQLException {
+        if (log.isDebugEnabled()) {
+            String sql = "SHOW VARIABLES LIKE 'character_set%'";
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql);
+            while (rs.next())
+                log.debugf("Mysql : %s=%s", rs.getString(1), rs.getString(2));
+            rs.close();
+            // 打印binlog_format
+            sql = "SHOW VARIABLES LIKE 'binlog_format'";
+            stmt = conn.createStatement();
+            rs = stmt.executeQuery(sql);
+            while (rs.next())
+                log.debugf("Mysql : %s=%s", rs.getString(1), rs.getString(2));
+            rs.close();
+            // 打印当前数据库名称
+            String dbName = "";
+            rs = stmt.executeQuery("SELECT DATABASE()");
+            if (rs.next()) {
+                dbName = rs.getString(1);
+                log.debug("Mysql : database=" + dbName);
+            }
+            rs.close();
+            // 打印当前连接用户及主机名
+            rs = stmt.executeQuery("SELECT USER()");
+            if (rs.next())
+                log.debug("Mysql : user=" + rs.getString(1));
+            rs.close();
+            stmt.close();
+            // 列出所有MyISAM引擎的表,这些表不支持事务
+            PreparedStatement pstmt = conn.prepareStatement("SELECT TABLE_NAME FROM information_schema.TABLES where TABLE_SCHEMA = ? and engine = 'MyISAM'");
+            pstmt.setString(1, dbName);
+            rs = pstmt.executeQuery();
+            if (rs.next())
+                log.debug("Mysql : '" + rs.getString(1) + "' engine=MyISAM");
+            rs.close();
+            pstmt.close();
+        }
+    }
+
+    public boolean canCommentWhenAddIndex() {
+        return true;
+    }
+
+    protected Sql createRelation(Dao dao, LinkField lf) {
+        Sql sql = super.createRelation(dao, lf);
+        if (sql == null)
+            return null;
+        Entity<?> en = lf.getEntity();
+        StringBuilder sb = new StringBuilder(sql.getSourceSql());
+        // 设置特殊引擎
+        if (en.hasMeta(META_ENGINE)) {
+            sb.append(" ENGINE=" + en.getMeta(META_ENGINE));
+        }
+        // 默认采用 UTF-8 编码
+        if (en.hasMeta(META_CHARSET)) {
+            sb.append(" CHARSET=" + en.getMeta(META_CHARSET));
+        } else {
+            sb.append(" CHARSET=utf8");
+        }
+        return Sqls.create(sb.toString());
     }
 }

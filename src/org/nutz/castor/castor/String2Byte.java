@@ -1,5 +1,7 @@
 package org.nutz.castor.castor;
 
+import org.nutz.lang.Nums;
+
 public class String2Byte extends String2Number<Byte> {
 
     @Override
@@ -9,7 +11,8 @@ public class String2Byte extends String2Number<Byte> {
 
     @Override
     protected Byte valueOf(String str) {
-        return Byte.valueOf(str);
+        Nums.Radix ni = Nums.evalRadix(str);
+        return Byte.valueOf(ni.val, ni.radix);
     }
 
 }

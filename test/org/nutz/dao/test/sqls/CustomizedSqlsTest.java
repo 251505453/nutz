@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.junit.Test;
@@ -17,6 +18,7 @@ import org.nutz.dao.Sqls;
 import org.nutz.dao.TableName;
 import org.nutz.dao.impl.FileSqlManager;
 import org.nutz.dao.impl.NutDao;
+import org.nutz.dao.impl.sql.NutSql;
 import org.nutz.dao.pager.Pager;
 import org.nutz.dao.sql.Sql;
 import org.nutz.dao.sql.SqlCallback;
@@ -26,6 +28,9 @@ import org.nutz.dao.test.meta.Country;
 import org.nutz.dao.test.meta.Pet;
 import org.nutz.dao.test.meta.Platoon;
 import org.nutz.dao.test.meta.Tank;
+import org.nutz.dao.test.meta.issue1176.Issue1176;
+import org.nutz.dao.util.cri.Exps;
+import org.nutz.dao.util.cri.SqlExpression;
 import org.nutz.trans.Atom;
 
 public class CustomizedSqlsTest extends DaoCase {
@@ -157,5 +162,55 @@ public class CustomizedSqlsTest extends DaoCase {
         Pager pager = dao.createPager(1, 20);
         sql.setPager(pager);
         dao.execute(sql);
+    }
+    
+    @Test
+    public void test_in() {
+        Sqls.setSqlBorning(NutSql.class);
+        dao.clear(Pet.class);
+        dao.insert(Pet.create(4));
+        List<Pet> pets = dao.query(Pet.class, null, dao.createPager(1, 2));
+        Sql sql = Sqls.create("select * from t_pet where id in (@ids)");
+        sql.setEntity(dao.getEntity(Pet.class));
+        sql.setCallback(Sqls.callback.entities());
+        sql.params().set("ids", new int[]{pets.get(0).getId(), pets.get(1).getId()});
+        dao.execute(sql);
+        List<Pet> npets = sql.getList(Pet.class);
+        assertEquals(2, npets.size());
+        assertEquals(npets.get(0).getId(), pets.get(0).getId());
+        assertEquals(npets.get(1).getId(), pets.get(1).getId());
+        Sqls.setSqlBorning(NutSql.class);
+    }
+    
+    @Test
+    public void test_issue_1176() {
+        dao.create(Issue1176.class, true);
+        
+        Sql s = Sqls.create("insert into t_issue_1176 (colA,colB) values (@colA,@colB)");
+
+        s.params().set("colA", "222222");
+        s.params().set("colB", null);
+        s.addBatch();
+                
+        s.params().set("colA", "1111111");
+        s.params().set("colB", "测试1111");
+        s.addBatch();
+                    
+        dao.execute(s);
+        
+        Issue1176 re = dao.fetch(Issue1176.class, Cnd.where("colA", "=", "1111111"));
+        assertNotNull(re);
+        assertEquals("测试1111", re.getColB());
+    }
+    
+    @Test
+    public void test_issue_1281() {
+        SqlExpression sqle = Exps.inSql2("id", "select user_id from role where id in (%s)", Arrays.asList(1,2,3));
+        Cnd cnd = Cnd.where(sqle);
+        System.out.println(cnd.toString());
+        StringBuilder sb = new StringBuilder();
+        sqle.joinSql(null, sb); // 取出带问号的SQL
+        System.out.println(sb);
+        assertEquals("id IN (select user_id from role where id in (?,?,?))", sb.toString());
     }
 }

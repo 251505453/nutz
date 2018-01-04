@@ -4,9 +4,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
+import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
 import org.junit.Before;
@@ -16,11 +20,14 @@ import org.nutz.el.issue.Issue293;
 import org.nutz.el.issue.Issue303;
 import org.nutz.el.issue.Issue314;
 import org.nutz.el.speed.SimpleSpeedTest;
+import org.nutz.lang.Encoding;
 import org.nutz.lang.Lang;
 import org.nutz.lang.Maths;
 import org.nutz.lang.Mirror;
 import org.nutz.lang.Strings;
 import org.nutz.lang.util.Context;
+import org.nutz.lang.util.NutMap;
+import org.nutz.repo.Base64;
 
 public class El2Test {
     El el;
@@ -492,5 +499,99 @@ public class El2Test {
         Context ctx = Lang.context();
         ctx.set("a",new Object[]{new org.nutz.el.issue411.Issue411.A()} );
         assertEquals("1", el.eval(ctx));
+    }
+    
+    @Test
+    public void test_uu32_uu64(){
+        Context ctx = Lang.context();
+        
+        El el = new El("uuid()");
+        assertEquals(32, el.eval(ctx).toString().length());
+        
+        el = new El("uuid(32)");
+        assertTrue(26 >= el.eval(ctx).toString().length());
+        
+        el = new El("uuid(64)");
+        assertTrue(23 >= el.eval(ctx).toString().length());
+    }
+    
+    @Test
+    public void test_base64(){
+        Context ctx = Lang.context();
+        
+        El el = new El("base64('中文,英文abc,火星文((%&(*')");
+        assertEquals(Base64.encodeToString("中文,英文abc,火星文((%&(*".getBytes(Encoding.CHARSET_UTF8), false), el.eval(ctx));
+        
+        String str = Base64.encodeToString("EEE中文".getBytes(Encoding.CHARSET_UTF8), false);
+        el = new El("base64('decode', \'" + str + "\')");
+        assertEquals("EEE中文", el.eval(ctx));
+    }
+    
+    @Test
+    public void test_urlencode() throws UnsupportedEncodingException {
+        String re = El.eval("urlencode('中文')").toString();
+        assertEquals(URLEncoder.encode("中文", Encoding.UTF8), re);
+        
+        re = El.eval("urlencode('中文', 'gbk')").toString();
+        assertEquals(URLEncoder.encode("中文", Encoding.GBK), re);
+        
+        re = El.eval("urlencode('中文', 'gb2312')").toString();
+        assertEquals(URLEncoder.encode("中文", Encoding.GB2312), re);
+    }
+    
+    @Test
+    public void test_map_get() {
+        Map<String, Object> map = new HashMap<String, Object>();
+        map.put("wendal", "http://wendal.net");
+        List<String> list = new ArrayList<String>();
+        list.add("abc");
+        assertEquals("http://wendal.net", El.eval(Lang.context().set("ctx", map), "ctx['wendal']"));
+        assertEquals("abc", El.eval(Lang.context().set("list", list), "list[0]"));
+    }
+    
+
+    @Test
+    public void test_el() {
+        El el = new El("'hi,'+name");
+        Context ctx = Lang.context();
+        ctx.set("name", "wendal");
+        assertEquals("hi,wendal", el.eval(ctx));
+    }
+    
+    @Test
+    public void test_el2() throws Exception {
+        El el = new El("sayhi(name)");
+        Context ctx = Lang.context();
+        ctx.set("name", "wendal");
+        ctx.set("sayhi", getClass().getMethod("sayhi", String.class));
+        assertEquals("hi,wendal", el.eval(ctx));
+    }
+    
+    public static String sayhi(String name) {
+        return "hi,"+name;
+    }
+    
+    @Test(timeout=5000, expected=Exception.class)
+    public void test_el_issue1185() {
+        Context context = Lang.context();
+        El.eval(context, "a.b)*0.30");
+    }
+    
+    @Test
+    public void test_issue_1307() {
+        //assertTrue((Boolean)El.eval("0 == 0"));
+        assertTrue((Boolean)El.eval("0 == 0.0"));
+    }
+    
+    @Test
+    public void test_issue_1229() {
+        Context ctx = Lang.context();
+        ctx.set("obj", new NutMap("pet", null).setv("girls", new ArrayList<String>()));
+        El.eval(ctx, "obj.pet");
+        El.eval(ctx, "!!(obj.pet)");
+        assertTrue((Boolean)El.eval(ctx, "!!(obj.pet.name) == null"));
+        assertTrue((Boolean)El.eval(ctx, "!(!(!!(obj.pet.name) == null))"));
+        assertEquals("wendal", El.eval(ctx, "!!(obj.pet.name) ||| 'wendal'"));
+        assertEquals("dog", El.eval(ctx, "!!(obj.girls) ||| 'dog'"));
     }
 }

@@ -1,13 +1,18 @@
 package org.nutz.dao.jdbc;
 
 import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.nutz.dao.Dao;
 import org.nutz.dao.entity.Entity;
+import org.nutz.dao.entity.EntityIndex;
 import org.nutz.dao.entity.MappingField;
 import org.nutz.dao.sql.DaoStatement;
 import org.nutz.dao.sql.Pojo;
+import org.nutz.dao.sql.Sql;
 import org.nutz.dao.sql.SqlType;
 
 /**
@@ -94,4 +99,30 @@ public interface JdbcExpert {
     Pojo fetchPojoId(Entity<?> en ,MappingField idField);
     
     boolean isSupportAutoIncrement();
+    
+    boolean isSupportGeneratedKeys();
+    
+    String evalFieldType(MappingField mf);
+    
+    boolean addColumnNeedColumn();
+    
+    boolean supportTimestampDefault();
+    
+    void setKeywords(Set<String> keywords);
+    
+    String wrapKeywork(String columnName, boolean force);
+    
+    void checkDataSource(Connection conn) throws SQLException ;
+    
+    Sql createIndexSql(Entity<?> en, EntityIndex index);
+    
+    Sql createAddColumnSql(Entity<?> en, MappingField mf);
+    
+    void createRelation(Dao dao, Entity<?> en);
+    
+    void dropRelation(Dao dao, Entity<?> en);
+    
+    boolean canCommentWhenAddIndex();
+
+    List<String> getIndexNames(Entity<?> en, Connection conn) throws SQLException;
 }

@@ -9,6 +9,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.nutz.lang.Mirror;
 import org.nutz.lang.Strings;
+import org.nutz.lang.born.Borning;
 import org.nutz.lang.inject.Injecting;
 import org.nutz.mvc.adaptor.ParamConvertor;
 import org.nutz.mvc.adaptor.ParamExtractor;
@@ -29,10 +30,13 @@ public class ObjectPairInjector implements ParamInjector {
     protected Mirror<?> mirror;
     protected Field[] fields;
     protected ParamConvertor[] converters;
+    protected Borning<?> borning;
+    protected String[] defaultValues;
 
     public ObjectPairInjector(String prefix, Type type) {
         prefix = Strings.isBlank(prefix) ? "" : Strings.trim(prefix);
         this.mirror = Mirror.me(type);
+        this.borning = mirror.getBorning();
         fields = mirror.getFields();
         this.injs = new Injecting[fields.length];
         this.names = new String[fields.length];
@@ -44,8 +48,14 @@ public class ObjectPairInjector implements ParamInjector {
             Param param = f.getAnnotation(Param.class);
             String nm = null == param ? f.getName() : param.value();
             String datefmt = null == param ? null : param.dfmt();
+            String locale = null == param ? null : param.locale();
             this.names[i] = prefix + nm;
-            this.converters[i] = Params.makeParamConvertor(f.getType(), datefmt);
+            this.converters[i] = Params.makeParamConvertor(f.getType(), datefmt, locale);
+            if (param != null && !Params.ParamDefaultTag.equals(param.df())) {
+                if (defaultValues == null)
+                    defaultValues = new String[fields.length];
+                defaultValues[i] = param.df();
+            }
         }
     }
 
@@ -54,9 +64,11 @@ public class ObjectPairInjector implements ParamInjector {
                       HttpServletResponse resp,
                       Object refer) {
         ParamExtractor pe = Params.makeParamExtractor(req, refer);
-        Object obj = mirror.born();
+        Object obj = borning.born();
         for (int i = 0; i < injs.length; i++) {
             Object param = converters[i].convert(pe.extractor(names[i]));
+            if (param == null && defaultValues != null && defaultValues[i] != null)
+                param = defaultValues[i];
             if (null != param)
                 injs[i].inject(obj, param);
         }

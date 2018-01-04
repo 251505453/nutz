@@ -1,5 +1,6 @@
 package org.nutz.castor;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -56,6 +57,7 @@ public class Castors {
      */
     private Object setting;
     private HashMap<Class<?>, Method> settingMap;
+
     /**
      * 设置转换的配置
      * <p>
@@ -93,7 +95,7 @@ public class Castors {
 
     private void reload() {
         buildSettingMap();
-        //this.map = 
+        // this.map =
         ArrayList<Class<?>> classes = new ArrayList<Class<?>>();
         classes.addAll(defaultCastorList);
         for (Class<?> klass : classes) {
@@ -102,13 +104,11 @@ public class Castors {
                     continue;
                 if (!Castor.class.isAssignableFrom(klass))
                     continue;
-                fillMap(klass, settingMap,false);
+                fillMap(klass, settingMap, false);
             }
             catch (Throwable e) {
                 if (log.isWarnEnabled())
-                    log.warnf("Fail to create castor [%s] because: %s",
-                              klass,
-                              e.getMessage());
+                    log.warnf("Fail to create castor [%s] because: %s", klass, e.getMessage());
             }
         }
         if (log.isDebugEnabled())
@@ -119,7 +119,7 @@ public class Castors {
         settingMap = new HashMap<Class<?>, Method>();
         for (Method m1 : setting.getClass().getMethods()) {
             Class<?>[] pts = m1.getParameterTypes();
-            if (pts.length == 1 && Castor.class.isAssignableFrom(pts[0])){
+            if (pts.length == 1 && Castor.class.isAssignableFrom(pts[0])) {
                 settingMap.put(pts[0], m1);
             }
         }
@@ -127,7 +127,7 @@ public class Castors {
 
     public void addCastor(Class<?> klass) {
         try {
-            fillMap(klass, settingMap,true);
+            fillMap(klass, settingMap, true);
         }
         catch (Throwable e) {
             throw Lang.wrapThrow(Lang.unwrapThrow(e));
@@ -140,20 +140,21 @@ public class Castors {
      * 
      * @param klass
      * @param settingMap
-     * @param replace  
+     * @param replace
      * @throws InstantiationException
      * @throws IllegalAccessException
      * @throws IllegalArgumentException
      * @throws InvocationTargetException
      */
-    private void fillMap(Class<?> klass, HashMap<Class<?>, Method> settingMap,boolean replace)
-            throws InstantiationException, IllegalAccessException,
-            IllegalArgumentException, InvocationTargetException {
+    private void fillMap(Class<?> klass, HashMap<Class<?>, Method> settingMap, boolean replace)
+            throws InstantiationException, IllegalAccessException, IllegalArgumentException,
+            InvocationTargetException {
         Castor<?, ?> castor = (Castor<?, ?>) klass.newInstance();
-        if (!map.containsKey(castor.toString()) || replace) {
-            map.put(castor.toString(), castor);
-        }else{
-            castor = map.get(castor.toString());
+        String key = castor.toString();
+        if (!map.containsKey(key) || replace) {
+            map.put(key, castor);
+        } else {
+            castor = map.get(key);
         }
         Method m = settingMap.get(castor.getClass());
         if (null == m) {
@@ -174,7 +175,7 @@ public class Castors {
      */
     // private Map<String, Map<String, Castor<?, ?>>> map;
     // private Map<Integer, Castor<?,?>> map;
-    private Map<String, Castor<?, ?>> map = new ConcurrentHashMap<String, Castor<?, ?>>();;
+    private Map<String, Castor<?, ?>> map = new ConcurrentHashMap<String, Castor<?, ?>>();
 
     /**
      * 转换一个 POJO 从一个指定的类型到另外的类型
@@ -192,10 +193,8 @@ public class Castors {
      *             如果没有找到转换器，或者转换失败
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    public <F, T> T cast(Object src,
-                         Class<F> fromType,
-                         Class<T> toType,
-                         String... args) throws FailToCastObjectException {
+    public <F, T> T cast(Object src, Class<F> fromType, Class<T> toType, String... args)
+            throws FailToCastObjectException {
         if (null == src) {
             // 原生数据的默认值
             if (toType.isPrimitive()) {
@@ -220,8 +219,19 @@ public class Castors {
             // 是对象，直接返回 null
             return null;
         }
+
         if (fromType == toType || toType == null || fromType == null)
             return (T) src;
+
+        Class<?> componentType = toType.getComponentType();
+        if (null != componentType
+            && fromType != String.class
+            && componentType.isAssignableFrom(fromType)) {
+            Object array = Array.newInstance(componentType, 1);
+            Array.set(array, 0, src);
+            return (T) array;
+        }
+
         if (fromType.getName().equals(toType.getName()))
             return (T) src;
         if (toType.isAssignableFrom(fromType))
@@ -245,13 +255,10 @@ public class Castors {
             throw e;
         }
         catch (Exception e) {
-            throw new FailToCastObjectException(String.format("Fail to cast from <%s> to <%s> for {%s} because:\n%s:%s",
+            throw new FailToCastObjectException(String.format("Fail to cast from <%s> to <%s> for {%s}",
                                                               fromType.getName(),
                                                               toType.getName(),
-                                                              src,
-                                                              e.getClass()
-                                                               .getSimpleName(),
-                                                              e.getMessage()),
+                                                              src),
                                                 Lang.unwrapThrow(e));
         }
     }
@@ -283,8 +290,8 @@ public class Castors {
         for (Class<?> ft : fets) {
             for (Class<?> tt : tets) {
                 if (map.containsKey(Castor.key(ft, tt))) {
-                    Castor<F, T> castor = (Castor<F, T>) map.get(Castor.key(ft,
-                                                                            tt));
+                    String key2 = Castor.key(ft, tt);
+                    Castor<F, T> castor = (Castor<F, T>) map.get(key2);
                     // 缓存转换器，加速下回转换速度
                     map.put(key, castor);
                     return castor;
@@ -305,8 +312,7 @@ public class Castors {
      * @throws FailToCastObjectException
      *             如果没有找到转换器，或者转换失败
      */
-    public <T> T castTo(Object src, Class<T> toType)
-            throws FailToCastObjectException {
+    public <T> T castTo(Object src, Class<T> toType) throws FailToCastObjectException {
         return cast(src, null == src ? null : src.getClass(), toType);
     }
 
@@ -324,6 +330,11 @@ public class Castors {
     public boolean canCast(Class<?> fromType, Class<?> toType) {
         if (Mirror.me(fromType).canCastToDirectly(toType))
             return true;
+
+        if (toType.isArray() && toType.getComponentType().isAssignableFrom(fromType)) {
+            return true;
+        }
+
         Castor<?, ?> castor = this.find(fromType, toType);
         return !(castor instanceof Object2Object);
     }
@@ -345,6 +356,7 @@ public class Castors {
     }
 
     private static List<Class<?>> defaultCastorList = new ArrayList<Class<?>>(120);
+
     static {
 
         defaultCastorList.add(org.nutz.castor.castor.Array2Array.class);
@@ -352,6 +364,7 @@ public class Castors {
         defaultCastorList.add(org.nutz.castor.castor.Array2Map.class);
         defaultCastorList.add(org.nutz.castor.castor.Array2Object.class);
         defaultCastorList.add(org.nutz.castor.castor.Array2String.class);
+        defaultCastorList.add(org.nutz.castor.castor.Boolean2Boolean.class);
         defaultCastorList.add(org.nutz.castor.castor.Boolean2Number.class);
         defaultCastorList.add(org.nutz.castor.castor.Boolean2String.class);
         defaultCastorList.add(org.nutz.castor.castor.Calendar2Datetime.class);
@@ -366,7 +379,6 @@ public class Castors {
         defaultCastorList.add(org.nutz.castor.castor.Collection2Map.class);
         defaultCastorList.add(org.nutz.castor.castor.Collection2Object.class);
         defaultCastorList.add(org.nutz.castor.castor.Collection2String.class);
-        defaultCastorList.add(org.nutz.castor.castor.DateTimeCastor.class);
         defaultCastorList.add(org.nutz.castor.castor.Datetime2Calendar.class);
         defaultCastorList.add(org.nutz.castor.castor.Datetime2Long.class);
         defaultCastorList.add(org.nutz.castor.castor.Datetime2SqlDate.class);
@@ -377,6 +389,7 @@ public class Castors {
         defaultCastorList.add(org.nutz.castor.castor.Enum2String.class);
         defaultCastorList.add(org.nutz.castor.castor.File2String.class);
         defaultCastorList.add(org.nutz.castor.castor.Map2Array.class);
+        defaultCastorList.add(org.nutz.castor.castor.Map2Boolean.class);
         defaultCastorList.add(org.nutz.castor.castor.Map2Collection.class);
         defaultCastorList.add(org.nutz.castor.castor.Map2Enum.class);
         defaultCastorList.add(org.nutz.castor.castor.Map2Object.class);
@@ -397,6 +410,7 @@ public class Castors {
         defaultCastorList.add(org.nutz.castor.castor.Number2Short.class);
         defaultCastorList.add(org.nutz.castor.castor.Number2String.class);
         defaultCastorList.add(org.nutz.castor.castor.Number2Timestamp.class);
+        defaultCastorList.add(org.nutz.castor.castor.Object2Boolean.class);
         defaultCastorList.add(org.nutz.castor.castor.Object2Class.class);
         defaultCastorList.add(org.nutz.castor.castor.Object2List.class);
         defaultCastorList.add(org.nutz.castor.castor.Object2Map.class);
@@ -425,7 +439,6 @@ public class Castors {
         defaultCastorList.add(org.nutz.castor.castor.String2Long.class);
         defaultCastorList.add(org.nutz.castor.castor.String2Map.class);
         defaultCastorList.add(org.nutz.castor.castor.String2Mirror.class);
-        defaultCastorList.add(org.nutz.castor.castor.String2Number.class);
         defaultCastorList.add(org.nutz.castor.castor.String2Object.class);
         defaultCastorList.add(org.nutz.castor.castor.String2Pattern.class);
         defaultCastorList.add(org.nutz.castor.castor.String2Set.class);
@@ -441,7 +454,7 @@ public class Castors {
         defaultCastorList.add(org.nutz.castor.castor.Timestamp2SqlDate.class);
         defaultCastorList.add(org.nutz.castor.castor.Timestamp2SqlTime.class);
         defaultCastorList.add(org.nutz.castor.castor.Timestamp2String.class);
-
+        defaultCastorList.add(org.nutz.castor.castor.String2DateFormat.class);
     }
 
     private static Castors one = new Castors();

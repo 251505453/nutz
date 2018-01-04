@@ -1,9 +1,8 @@
 package org.nutz.log.impl;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import org.nutz.lang.Times;
 import org.nutz.log.Log;
 import org.nutz.log.LogAdapter;
 import org.nutz.plugin.Plugin;
@@ -28,13 +27,11 @@ public class SystemLogAdapter implements LogAdapter, Plugin {
 
         private final static SystemLog me = new SystemLog();
         
-        private final static DateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        
         private static boolean warned;
 
         static SystemLog me() {
             if (! warned) {
-                me.warn("!!You are using default SystemLog! Don't use it in Production environment!!");
+                me.info("Select SystemLog as Nutz.Log implement");
                 warned = true;
             }
             return me;
@@ -42,7 +39,7 @@ public class SystemLogAdapter implements LogAdapter, Plugin {
 
         private SystemLog() {
             isInfoEnabled = true;
-            isDebugEnabled = true;//严重考虑中!!
+            isDebugEnabled = true;
         }
 
         public void debug(Object message, Throwable t) {
@@ -76,13 +73,13 @@ public class SystemLogAdapter implements LogAdapter, Plugin {
         }
 
         private void printOut(String level, Object message, Throwable t) {
-            System.out.printf("%s %s [%s] %s\n",DATE_FORMAT.format(new Date()), level, Thread.currentThread().getName(),message);
+            System.out.printf("%s %s [%s] %s\n", Times.sDTms2(new Date()), level, Thread.currentThread().getName(),message);
             if (t != null)
                 t.printStackTrace(System.out);
         }
 
         private void errorOut(String level, Object message, Throwable t) {
-            System.err.printf("%s %s [%s] %s\n",DATE_FORMAT.format(new Date()), level, Thread.currentThread().getName(),message);
+            System.err.printf("%s %s [%s] %s\n", Times.sDTms2(new Date()), level, Thread.currentThread().getName(),message);
             if (t != null)
                 t.printStackTrace(System.err);
         }

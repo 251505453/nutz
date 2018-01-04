@@ -6,12 +6,12 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 
 import org.junit.Test;
-
 import org.nutz.NutzEnum;
 import org.nutz.dao.DB;
 import org.nutz.dao.entity.annotation.Id;
@@ -20,6 +20,7 @@ import org.nutz.dao.test.meta.Pet;
 import org.nutz.lang.born.Borning;
 import org.nutz.lang.meta.Email;
 import org.nutz.lang.meta.Issue392Bean;
+import org.nutz.lang.meta.IssueVarStringMethodC;
 import org.nutz.lang.reflect.ObjA;
 import org.nutz.lang.util.Callback;
 import org.nutz.lang.util.Callback3;
@@ -54,6 +55,14 @@ public class MirrorTest {
         }
 
         fs = Mirror.me(MTGSF.class).getStaticField(false);
+        List<Field> tmp = new ArrayList<Field>();
+        for (Field field : fs) {
+            if (field.getName().equals("$jacocoData"))
+                continue;
+            tmp.add(field);
+        }
+        if (fs.length != tmp.size())
+            fs = tmp.toArray(new Field[tmp.size()]);
         assertEquals(5, fs.length);
         for (Field f : fs) {
             assertFalse(f.getName().startsWith("m_"));
@@ -85,6 +94,14 @@ public class MirrorTest {
     @Test
     public void test_duplicate_method_for_getAllDeclareMethods() {
         Method[] ms = Mirror.me(TDMFGADMII.class).getAllDeclaredMethodsWithoutTop();
+        List<Method> tmp = new ArrayList<Method>();
+        for (Method method : ms) {
+            if (method.getName().equals("$jacocoInit"))
+                continue;
+            tmp.add(method);
+        }
+        if (ms.length != tmp.size())
+            ms = tmp.toArray(new Method[tmp.size()]);
         assertEquals(2, ms.length);
     }
 
@@ -616,5 +633,15 @@ public class MirrorTest {
     public void testIssue392() {
         assertEquals(0, Mirror.me(Issue392Bean.class).born(new byte[]{}).getLen());
         assertEquals(6, Mirror.me(Issue392Bean.class).born(new byte[]{1, 2, 3, 4, 5, 6}).getLen());
+    }
+    
+    @Test
+    public void test_var_string_factory() throws NoSuchMethodException {
+        Mirror.me(IssueVarStringMethodC.class).born("wendal", "abc");
+        ArrayList<String> args = new ArrayList<String>();
+        args.add("wendal");
+        args.add("abc");
+        Mirror.me(IssueVarStringMethodC.class).born(args.toArray());
+        Mirror.me(IssueVarStringMethodC.class).findMethod("make", args.toArray(new String[0]));
     }
 }
